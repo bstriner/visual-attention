@@ -14,7 +14,7 @@ def run(path, cropped, features):
 
 def main():
     input_dir = os.environ['MSCOCO_PATH']
-    preprocess_dir(input_dir, 'output/cropped', 'output/features')
+    run(input_dir, 'output/cropped', 'output/features')
 
 
 if __name__ == '__main__':

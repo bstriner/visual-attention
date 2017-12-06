@@ -39,12 +39,12 @@ def merge_batches(annotation_path, image_path_fmt, output_fmt, splits):
 def main():
     splits = 20
     os.makedirs('output/batches', exist_ok=True)
-    merge_batches('output/processed-annotations/train-annotations.npy',
-                  'output/features/train/{:011d}.jpg',
+    merge_batches('output/processed-annotations/train-annotations.npz',
+                  'output/features/train/{:012d}.npy',
                   'output/batches/train-{}.npz',
                   splits=splits)
-    merge_batches('output/processed-annotations/val-annotations.npy',
-                  'output/features/val/{:011d}.jpg',
+    merge_batches('output/processed-annotations/val-annotations.npz',
+                  'output/features/val/{:012d}.npy',
                   'output/batches/val.npz',
                   splits=1)
     pass

@@ -1,4 +1,5 @@
 import tensorflow as tf
+from tensorflow.contrib.layers import l2_regularizer, apply_regularization
 from tensorflow.python.ops.rnn_cell import RNNCell
 
 from .gumbel import gumbel_softmax, gumbel_sigmoid, softmax_nd
@@ -57,7 +58,7 @@ def attention_fn(img, mode, params):
 def shift_captions(cap):
     n = tf.shape(cap)[0]
     zeros = tf.zeros((n,), dtype=tf.int32)
-    shifted = tf.concat((zeros, cap[:, 1:] + 1))
+    shifted = tf.concat((zeros, cap[:, :-1] + 1))
     return shifted
 
 
@@ -78,7 +79,7 @@ class StepCell(RNNCell):
 
     @property
     def output_size(self):
-        return self._num_units
+        return self.vocab_size+2
 
     def call(self, inputs, state):
         y0 = inputs  # (n,) [end, unknown]+vocab
@@ -99,8 +100,10 @@ class StepCell(RNNCell):
             h = tf.layers.dense(h, units=self._num_units, kernel_initializer=self.initializer,
                                 name='input_attn{}'.format(j))
             h = tf.nn.relu(h)
-        h = tf.layers.dense(h, units=self.frame_size, kernel_initializer=self.initializer, name='input_attn_final')
-        slot_attn = gumbel_softmax(logits=h, temperature=self.temperature, axis=-1)  # (n, frames)
+        attn_logits = tf.layers.dense(h, units=self.frame_size, kernel_initializer=self.initializer,
+                                      name='input_attn_final')
+        attn_bias = tf.log(EPSILON+self.sen)
+        slot_attn = gumbel_softmax(logits=attn_logits+attn_bias, temperature=self.temperature, axis=-1)  # (n, frames)
         slot_data = tf.reduce_sum(self.img_ctx * tf.expand_dims(slot_attn, axis=2), axis=1)  # (n, channels)
 
         # Calculate forward
@@ -122,15 +125,18 @@ class StepCell(RNNCell):
 
 
 def decoder_fn(img_ctx, sen, cap, temperature, mode, params):
-    shifted = shift_captions(cap)
-    # cells = [LSTMCell() for _ in range(2)]
-    shape = tf.shape(cap)
-    n = shape[0]
-    # d = shape[1]
-    cell = StepCell(sen=sen, temperature=temperature, img_ctx=img_ctx, params=params)
-    initial_state = cell.zero_state(batch_size=n)
-    outputs, state = tf.nn.dynamic_rnn(cell=cell, inputs=shifted, initial_state=initial_state)
-    return outputs  # (n, depth, vocab)
+    if mode == tf.estimator.ModeKeys.PREDICT:
+        raise NotImplementedError
+    elif mode == tf.estimator.ModeKeys.EVAL or mode == tf.estimator.ModeKeys.TRAIN:
+        shifted = shift_captions(cap)
+        shape = tf.shape(cap)
+        n = shape[0]
+        cell = StepCell(sen=sen, temperature=temperature, img_ctx=img_ctx, params=params)
+        initial_state = cell.zero_state(batch_size=n)
+        outputs, state = tf.nn.dynamic_rnn(cell=cell, inputs=shifted, initial_state=initial_state)
+        return outputs  # (n, depth, vocab)
+    else:
+        raise ValueError()
 
 
 def apply_attn(img, att, sen):
@@ -170,9 +176,11 @@ def model_fn(features, labels, mode, params):
         }
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
     else:
-        # loss = tf.reduce_mean(
-        #    tf.nn.sigmoid_cross_entropy_with_logits(labels=labels, logits=logits))
         loss = tf.reduce_mean(cross_entropy(labels=cap, logits=logits))
+        if params.l2 > 0:
+            reg = apply_regularization(l2_regularizer(params.l2), tf.trainable_variables())
+            tf.summary.scalar("regularization", reg)
+            loss += reg
         if mode == tf.estimator.ModeKeys.TRAIN:
             lr = tf.train.exponential_decay(params.lr,
                                             decay_rate=params.decay_rate,

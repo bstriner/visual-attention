@@ -1,9 +1,10 @@
 import json
+import os
 
-from visual_attention.annotation_preprocessing import load_file, calc_annotations
+from visual_attention.annotation_preprocessing import load_file, write_annotation, calc_vocab, write_vocab
 
 
-def main():
+def main2():
     path = r'D:\Projects\data\mscoco\2017\annotations\captions_val2017.json'
     with open(path) as fp:
         x = json.load(fp)
@@ -24,10 +25,21 @@ def main():
     print(x.keys())
     print(x['categories'][0])
 
-def main2():
-    path = r'D:\Projects\data\mscoco\2017\annotations\captions_train2017.json'
-    data = load_file(path)
-    ann = calc_annotations(data, output_path='output/processed-annotations')
+
+def main():
+    basepath = r'D:\Projects\data\mscoco\2017\annotations'
+    output_path = 'output/processed-annotations'
+    os.makedirs(output_path, exist_ok=True)
+    mincount = 10
+
+    data = load_file(os.path.join(basepath, 'captions_train2017.json'))
+    val = load_file(os.path.join(basepath, 'captions_val2017.json'))
+
+    vocab, vmap, counts = calc_vocab(data, mincount=mincount)
+    write_vocab(os.path.join(output_path, 'vocab'), vocab=vocab, counts=counts)
+    print('Vocabulary size: {}'.format(len(vocab)))
+    write_annotation(data=data, vmap=vmap, output_path=os.path.join(output_path, 'train-annotations.npz'))
+    write_annotation(data=val, vmap=vmap, output_path=os.path.join(output_path, 'val-annotations.npz'))
 
 
 if __name__ == '__main__':

@@ -1,9 +1,8 @@
 import csv
 import json
-import os
 import re
-import numpy as np
 
+import numpy as np
 from nltk.tokenize import WordPunctTokenizer
 
 
@@ -24,37 +23,53 @@ def tokenize(caption):
     # return tokens
 
 
-def collect_vocab(annotations):
-    vocab = set()
+def collect_vocab(annotations, mincount=10):
+    counts = {}
     for a in annotations:
         caption = a['caption']
         tokens = tokenize(caption)
         for t in tokens:
-            vocab.add(t)
-    vocab = list(vocab)
+            if t in counts:
+                counts[t] += 1
+            else:
+                counts[t] = 1
+    vocab = list(counts.keys())
+    vocab = [v for v in vocab if counts[v] >= mincount]
     vocab.sort()
-    return vocab
+    counts = {k: v for k, v in counts.items() if k in vocab}
+    return vocab, counts
 
 
-def write_vocab(path, vocab):
-    with open(path, 'w', newline='') as f:
+def write_vocab(path, vocab, counts):
+    with open(path + '.csv', 'w', newline='') as f:
         w = csv.writer(f)
-        w.writerow(['Id', 'Word'])
+        w.writerow(['Id', 'Word', 'Counts'])
         for i, v in enumerate(vocab):
-            w.writerow([i, v])
+            w.writerow([i, v, counts[v]])
+    np.save(path + '.npy', np.array(vocab, dtype=np.string_))
+
+
+def token_id(vmap, token):
+    if token in vmap:
+        return vmap[token] + 1
+    else:
+        return 0
+
 
 def annotation_vector(vmap, caption):
     tokens = tokenize(caption)
-    vec = np.array([vmap[t]+2 for t in tokens]+[1], dtype=np.int32)
+    vec = np.array([token_id(vmap, t) + 2 for t in tokens] + [1], dtype=np.int32)
     return vec
+
 
 def combine_vectors(vs):
     n = len(vs)
-    m = max(v.size[0] for v in vs)
+    m = max(v.shape[0] for v in vs)
     d = np.zeros((n, m), dtype=np.int32)
     for i, v in enumerate(vs):
         d[i, :v.shape[0]] = v
     return d
+
 
 def annotation_vectors(vmap, annotations):
     vecs = {}
@@ -70,21 +85,24 @@ def annotation_vectors(vmap, annotations):
     return cvecs
 
 
-def calc_annotations(data, output_path):
-    os.makedirs(output_path, exist_ok=True)
+def calc_vocab(data, mincount=10):
     annotations = data['annotations']
-    vocab = collect_vocab(annotations)
-    vocab_path = os.path.join(output_path, 'vocab.txt')
-    write_vocab(vocab_path, vocab)
-
-    vmap = {k:i for i, k in enumerate(vocab)}
+    vocab, counts = collect_vocab(annotations, mincount)
+    vmap = {k: i for i, k in enumerate(vocab)}
+    return vocab, vmap, counts
 
 
-    """
-    for a in annotations:
-        caption = a['caption']
-        print(caption)
-        tokens = tokenize(caption)
-        print(tokens)
-        raise ValueError()
-    """
+def calc_annotations(data, vmap):
+    annotations = data['annotations']
+    vecs = annotation_vectors(vmap, annotations)
+    keys = list(vecs.keys())
+    keys.sort()
+    vecs = [vecs[k] for k in keys]
+    return np.array(vecs), np.array(keys)
+
+
+def write_annotation(data, vmap, output_path):
+    ann, img = calc_annotations(data, vmap=vmap)
+    kw = {'annotations': ann,
+          'image_ids': img}
+    np.savez(output_path, **kw)

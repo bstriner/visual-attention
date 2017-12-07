@@ -82,6 +82,12 @@ class FeedFnHook(SessionRunHook):
             placeholder_assignments: batch_assignments,
             placeholder_captions: batch_captions,
         }
+        #print("batch_images: {}".format(batch_images.shape))
+        #print("batch_assignments: {}".format(batch_assignments.shape))
+        #print("batch_captions: {}".format(batch_captions.shape))
+        #assert np.all(np.isfinite(batch_images))
+        #assert np.all(np.isfinite(batch_assignments))
+        #assert np.all(np.isfinite(batch_captions))
         return feed_dict
 
     def before_run(self, run_context):

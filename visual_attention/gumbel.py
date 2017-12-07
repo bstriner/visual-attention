@@ -18,7 +18,7 @@ def gumbel_softmax_sample(logits, temperature, axis=-1):
     return softmax_nd(y / temperature, axis=axis)
 
 
-def gumbel_sigmoid(logit, temperature, hard=False):
+def gumbel_sigmoid(logits, temperature, hard=False):
     #g1 = sample_gumbel(logit.shape)
     #g2 = sample_gumbel(logit.shape)
     #a = tf.exp((g1 + logit) / temperature)
@@ -26,12 +26,12 @@ def gumbel_sigmoid(logit, temperature, hard=False):
     #s = a + b
     #todo: rescale subtract max
     #return a / s
-    return tf.gather(gumbel_softmax(tf.stack((-logit, logit), axis=0),
+    return tf.gather(gumbel_softmax(tf.stack((-logits, logits), axis=0),
                                     temperature=temperature, hard=hard, axis=0), 1, axis=0)
 
 
-def gumbel_argmax(logits, srng, axis=-1):
-    g = sample_gumbel(shape=logits.shape)
+def gumbel_argmax(logits, axis=-1):
+    g = sample_gumbel(shape=tf.shape(logits))
     return tf.argmax(logits + g, axis=axis)
 
 

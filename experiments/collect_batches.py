@@ -31,13 +31,13 @@ def merge_batches(annotation_path, image_path_fmt, output_fmt, splits):
 
         batch_annotations = annotations[batch_idx]
         batch_path = output_fmt.format(i)
-        np.savez(batch_path, annotations=batch_annotations, images=batch_images)
+        np.savez(batch_path, annotations=batch_annotations, images=batch_images, batch_image_ids=batch_image_ids)
 
     print("Image count: {}".format(n))
 
 
 def main():
-    splits = 20
+    splits = 40
     os.makedirs('output/batches', exist_ok=True)
     merge_batches('output/processed-annotations/train-annotations.npz',
                   'output/features/train/{:012d}.npy',

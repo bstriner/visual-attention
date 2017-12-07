@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from visual_attention.debugging import enable_debugging_monkey_patch
 from visual_attention.make_experiment import experiment_fn
-
+from tensorflow.contrib.training import HParams
 
 def main(_argv):
     batch_size = 32
@@ -18,7 +18,7 @@ def main(_argv):
     vocab = np.load('output/processed-annotations/vocab.npy')
     vocab_size = vocab.shape[0]
     run_config = tf.contrib.learn.RunConfig(model_dir=model_dir)
-    hparams = tf.contrib.training.HParams(lr=0.001,
+    hparams = HParams(lr=0.001,
                                           momentum=0.9,
                                           frame_size=10,
                                           vocab_size=vocab_size,
@@ -29,7 +29,9 @@ def main(_argv):
                                           tau_0=1.,
                                           tau_decay_rate=0.1,
                                           tau_decay_steps=300000,
-                                          sen_l1=1e-2,
+                                          tau_min=0.1,
+                                          slot_sen_l1=1e-4,
+                                          img_sen_l1=1e-4,
                                           l2=1e-5,
                                           optimizer='adam',
                                           attn_mode_img='soft',
@@ -50,7 +52,7 @@ def main(_argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/v02',
+    tf.flags.DEFINE_string('model-dir', 'output/model/v06',
                            'Model directory')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')

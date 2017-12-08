@@ -43,7 +43,7 @@ class FeedFnHook(SessionRunHook):
         data = np.load(path)
         annotations = data['annotations']
         images = data['images']
-        image_ids = data['image_ids']
+        image_ids = data['batch_image_ids']
         n = images.shape[0]
         idx = np.arange(n)
         np.random.shuffle(idx)
@@ -93,25 +93,9 @@ class FeedFnHook(SessionRunHook):
 
     def build_feed_dict(self, graph):
         placeholders = self.load_placeholders(graph)
-        data =next(self.batch_iter)
-        feed_dict = {k:v for k,v in zip(placeholders, data)}
+        data = next(self.batch_iter)
+        feed_dict = {k: v for k, v in zip(placeholders, data)}
         return feed_dict
-        """
-        if self.predict:
-            placeholder_images, placeholder_image_ids = self.load_placeholders(graph)
-            batch_images, batch_image_ids = next(self.batch_iter)
-            feed_dict = {placeholder_images: batch_images, placeholder_image_ids: batch_image_ids}
-        else:
-            (placeholder_images, placeholder_image_ids, 
-             placeholder_assignments, placeholder_captions) = self.load_placeholders(graph)
-            batch_images, batch_image_ids, batch_assignments, batch_captions = next(self.batch_iter)
-            feed_dict = {
-                placeholder_images: batch_images,
-                placeholder_image_ids: batch_image_ids,
-                placeholder_assignments: batch_assignments,
-                placeholder_captions: batch_captions,
-            }
-        """
         # print("batch_images: {}".format(batch_images.shape))
         # print("batch_assignments: {}".format(batch_assignments.shape))
         # print("batch_captions: {}".format(batch_captions.shape))

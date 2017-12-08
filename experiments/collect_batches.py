@@ -31,7 +31,7 @@ def merge_batches(annotation_path, image_path_fmt, output_fmt, splits):
 
         batch_annotations = annotations[batch_idx]
         batch_path = output_fmt.format(i)
-        np.savez(batch_path, annotations=batch_annotations, images=batch_images, batch_image_ids=batch_image_ids)
+        np.savez(batch_path, annotations=batch_annotations, images=batch_images, image_ids=batch_image_ids)
 
     print("Image count: {}".format(n))
 
@@ -47,7 +47,6 @@ def main():
                   'output/features/val/{:012d}.npy',
                   'output/batches/val.npz',
                   splits=1)
-    pass
 
 
 if __name__ == '__main__':

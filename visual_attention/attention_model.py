@@ -7,22 +7,21 @@ from .gumbel import gumbel_softmax, gumbel_sigmoid, softmax_nd
 EPSILON = 1e-7
 
 
+def leaky_relu(x):
+    return tf.maximum(x, x * 0.2)
+
+
 def attention_fn(img, temperature, mode, params):
-    activation = tf.nn.relu
+    n = tf.shape(img)[0]
+    activation = leaky_relu
     cnn_args = {}
-    # if params.kernel_l2 > 0:
-    #    cnn_args['kernel_regularizer'] = l2(params.kernel_l2)
-    # if params.bias_l2 > 0:
-    #    cnn_args['bias_regularizer'] = l2(params.bias_l2)
     training = mode == tf.estimator.ModeKeys.TRAIN
     frame_size = params.frame_size
     h = img
-    h = tf.layers.conv2d(inputs=h, filters=256, kernel_size=[3, 3],
-                         padding="same", name='attn_conv1', **cnn_args)
-    h = activation(h)
-    h = tf.layers.conv2d(inputs=h, filters=256, kernel_size=[3, 3],
-                         padding="same", name='attn_conv2', **cnn_args)
-    h = activation(h)
+    for i in range(3):
+        h = tf.layers.conv2d(inputs=h, filters=params.units, kernel_size=[3, 3],
+                             padding="same", name='attn_conv{}'.format(i), **cnn_args)
+        h = activation(h)
 
     h_att = tf.layers.conv2d(inputs=h, filters=frame_size, kernel_size=[3, 3],
                              padding="same", name='attn_att', **cnn_args)
@@ -30,20 +29,19 @@ def attention_fn(img, temperature, mode, params):
                              padding="same", name='attn_sen', **cnn_args)
 
     # attention
-
     if params.attn_mode_img == 'gumbel':
         # h = tf.transpose(h_att, (0, 3, 1, 2))  # (n,c, h,w)
         # h = tf.reshape(h, (-1, 14 * 14))  # (n*c, h*w)
         # h = gumbel_softmax(logits=h, temperature=temperature, axis=-1)
         # h = tf.reshape(h, (-1, frame_size, 14, 14))  # (n,c, h, w)
         # attn = tf.transpose(h, (0, 2, 3, 1))  # (n, h, w, c)
-        h = tf.transpose(h, (0, 3, 1, 2))  # (n,c,h,w)
-        h = tf.reshape(h, (-1, 14 * 14))  # (n*c, h*w)
+        h = tf.transpose(h_att, (0, 3, 1, 2))  # (n,c,h,w)
+        h = tf.reshape(h, (n * frame_size, 14 * 14))  # (n*c, h*w)
         if mode == tf.estimator.ModeKeys.PREDICT:
             h = tf.one_hot(tf.argmax(h, axis=1), tf.shape(h)[1], axis=1)
         else:
             h = gumbel_softmax(logits=h, temperature=temperature, axis=1)
-        h = tf.reshape(h, (-1, frame_size, 14, 14))
+        h = tf.reshape(h, (n, frame_size, 14, 14))
         attn = tf.transpose(h, (0, 2, 3, 1))
     elif params.attn_mode_img == 'soft':
         attn = softmax_nd(h_att, axis=(1, 2))
@@ -94,15 +92,18 @@ def train_decoder_fn(img_ctx, sen, cap, temperature, params, mode):
 def apply_attn(img, att, sen):
     # img (n, w, h, c)
     # att (n, w, h, frames)
+    # sen (n, frames)
     h = tf.expand_dims(img, axis=3) * tf.expand_dims(att, axis=4)  # (n, w, h, frames, c)
     h = tf.reduce_sum(h, axis=(1, 2))  # (n, frames, c)
     h *= tf.expand_dims(sen, axis=2)  # (n, frames, c)
     return h
 
 
-def cross_entropy(labels, logits, vocab_size):
+def cross_entropy(labels, logits, vocab_size, smoothing=0.):
     p = softmax_nd(logits, axis=2)  # (n, depth, vocab+2) [end, unknown] + vocab
     onehot = tf.one_hot(tf.nn.relu(labels - 1), vocab_size + 2, axis=2)  # (n, depth, vocab)
+    if smoothing > 0:
+        onehot = (onehot * (1. - smoothing)) + (smoothing * tf.ones_like(onehot) / (vocab_size + 2.))
     mask = 1. - tf.cast(tf.equal(labels, 0), tf.float32)  # (n, depth)
     loss_partial = -(onehot * tf.log(EPSILON + p)) - ((1. - onehot) * tf.log(EPSILON + 1. - p))  # (n, depth, vocab)
     loss_partial = tf.reduce_sum(loss_partial, axis=2)  # (n, depth)
@@ -145,7 +146,7 @@ def model_fn(features, labels, mode, params):
         logits, slot_attn, slot_sentinel, y1 = predict_decoder_fn(
             img_ctx=img_ctx, sen=img_sen, params=params, depth=30, mode=mode)
         predictions = {
-            'classes': y1,
+            'captions': y1,
             'image_ids': tf.get_default_graph().get_tensor_by_name('image_ids:0'),
             'slot_attention': slot_attn,
             'slot_sentinel': slot_sentinel,
@@ -161,7 +162,14 @@ def model_fn(features, labels, mode, params):
 
         logits, slot_attn, slot_sentinel = train_decoder_fn(img_ctx=decoder_ctx, sen=decoder_sen, cap=cap,
                                                             temperature=temperature, params=params, mode=mode)
-        loss = tf.reduce_mean(nll_loss(labels=cap, logits=logits, vocab_size=params.vocab_size))
+        if params.loss == 'cross_entropy':
+            loss = tf.reduce_mean(cross_entropy(labels=cap, logits=logits,
+                                                vocab_size=params.vocab_size, smoothing=params.smoothing))
+        elif params.loss == 'nll':
+            loss = tf.reduce_mean(nll_loss(labels=cap, logits=logits,
+                                           vocab_size=params.vocab_size))
+        else:
+            raise ValueError()
         if params.l2 > 0:
             reg = apply_regularization(l2_regularizer(params.l2), tf.trainable_variables())
             tf.summary.scalar("regularization", reg)

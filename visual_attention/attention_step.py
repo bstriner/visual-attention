@@ -7,8 +7,11 @@ EPSILON = 1e-7
 
 
 class BaseStepCell(RNNCell):
-    def __init__(self, sen, temperature, img_ctx, params, mode, reuse=None, name=None):
+    def __init__(self, sen, temperature, img_ctx, params, mode,
+                 activation=tf.nn.relu,
+                 reuse=None, name=None):
         super(BaseStepCell, self).__init__(_reuse=reuse, name=name)
+        self.activation=activation
         self.sen = sen
         self._num_units = params.units
         self.vocab_size = params.vocab_size
@@ -46,10 +49,10 @@ class BaseStepCell(RNNCell):
         for j in range(3):
             h = tf.layers.dense(h, units=self._num_units, kernel_initializer=self.initializer,
                                 name='input_attn{}'.format(j))
-            h = tf.nn.relu(h)
+            h = self.activation(h)
         attn_logits = tf.layers.dense(h, units=self.frame_size, kernel_initializer=self.initializer,
                                       name='input_attn_final')
-        attn_bias = tf.log(1e-5 + self.sen)
+        attn_bias = tf.log(1e-7 + self.sen)
         sent_logits = tf.layers.dense(h, units=1, kernel_initializer=self.initializer, name='input_sent')
         with tf.name_scope('recurrent_slot_attention'):
             if self.mode == tf.estimator.ModeKeys.PREDICT:
@@ -83,7 +86,7 @@ class BaseStepCell(RNNCell):
         for j in range(3):
             h = tf.layers.dense(h, units=self._num_units, kernel_initializer=self.initializer,
                                 name='forward{}'.format(j))
-            h = tf.nn.relu(h)
+            h = self.activation(h)
         hd = tf.layers.dense(h, units=self._num_units, kernel_initializer=self.initializer,
                              name='forwardfinal')
         h1 = h0 + hd

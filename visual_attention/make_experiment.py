@@ -6,7 +6,7 @@ from tensorflow.contrib.learn import Experiment
 from tensorflow.python.estimator.estimator import Estimator
 
 def experiment_fn(run_config, hparams):
-    splits = 20
+    splits = 40
     train_path = 'output/batches/train-{}.npz'
     val_path = 'output/batches/val.npz'
     batch_size = hparams.batch_size

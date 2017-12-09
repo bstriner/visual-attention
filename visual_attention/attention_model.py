@@ -1,138 +1,10 @@
 import tensorflow as tf
 from tensorflow.contrib.layers import l2_regularizer, apply_regularization
 
-from .attention_step import PredictStepCell, TrainStepCell
-from .gumbel import gumbel_softmax, gumbel_sigmoid, softmax_nd
-
-EPSILON = 1e-7
-
-
-def leaky_relu(x):
-    return tf.maximum(x, x * 0.2)
-
-
-def attention_fn(img, temperature, mode, params):
-    n = tf.shape(img)[0]
-    activation = leaky_relu
-    cnn_args = {}
-    training = mode == tf.estimator.ModeKeys.TRAIN
-    frame_size = params.frame_size
-    h = img
-    for i in range(3):
-        h = tf.layers.conv2d(inputs=h, filters=params.units, kernel_size=[3, 3],
-                             padding="same", name='attn_conv{}'.format(i), **cnn_args)
-        h = activation(h)
-
-    h_att = tf.layers.conv2d(inputs=h, filters=frame_size, kernel_size=[3, 3],
-                             padding="same", name='attn_att', **cnn_args)
-    h_sen = tf.layers.conv2d(inputs=h, filters=frame_size, kernel_size=[3, 3],
-                             padding="same", name='attn_sen', **cnn_args)
-
-    # attention
-    if params.attn_mode_img == 'gumbel':
-        # h = tf.transpose(h_att, (0, 3, 1, 2))  # (n,c, h,w)
-        # h = tf.reshape(h, (-1, 14 * 14))  # (n*c, h*w)
-        # h = gumbel_softmax(logits=h, temperature=temperature, axis=-1)
-        # h = tf.reshape(h, (-1, frame_size, 14, 14))  # (n,c, h, w)
-        # attn = tf.transpose(h, (0, 2, 3, 1))  # (n, h, w, c)
-        h = tf.transpose(h_att, (0, 3, 1, 2))  # (n,c,h,w)
-        h = tf.reshape(h, (n * frame_size, 14 * 14))  # (n*c, h*w)
-        if mode == tf.estimator.ModeKeys.PREDICT:
-            h = tf.one_hot(tf.argmax(h, axis=1), tf.shape(h)[1], axis=1)
-        else:
-            h = gumbel_softmax(logits=h, temperature=temperature, axis=1)
-        h = tf.reshape(h, (n, frame_size, 14, 14))
-        attn = tf.transpose(h, (0, 2, 3, 1))
-    elif params.attn_mode_img == 'soft':
-        attn = softmax_nd(h_att, axis=(1, 2))
-    else:
-        raise ValueError()
-
-    # sentinel
-    h = tf.reduce_mean(h_sen, axis=(1, 2))  # (n, c)
-    sen = gumbel_sigmoid(h, temperature=temperature)  # (n, c)
-    tf.summary.histogram('image_sentinel', sen)
-    return attn, sen
-
-
-def shift_captions(cap):
-    n = tf.shape(cap)[0]
-    zeros = tf.zeros((n, 1), dtype=tf.int32)
-    shifted = tf.concat((zeros, cap[:, :-1] + 1), axis=1)
-    return shifted
-
-
-def predict_decoder_fn(img_ctx, sen, params, mode, depth):
-    shape = tf.shape(img_ctx)
-    n = shape[0]
-    y0 = tf.zeros((n, 1), dtype=tf.float32)
-    cell = PredictStepCell(sen=sen, img_ctx=img_ctx, params=params, mode=mode, name='step_cell')
-    initial_state = cell.zero_state(batch_size=n, dtype=tf.float32)
-    inputs = tf.zeros((1, depth, 1))
-    (logits, slot_attn, slot_sentinel, y1), state = tf.nn.dynamic_rnn(
-        cell=cell,
-        inputs=inputs,
-        initial_state=(y0, initial_state),
-        time_major=False)
-    return logits, slot_attn, slot_sentinel, y1
-
-
-def train_decoder_fn(img_ctx, sen, cap, temperature, params, mode):
-    shape = tf.shape(img_ctx)
-    n = shape[0]
-    shifted = shift_captions(cap)
-    shifted = tf.expand_dims(shifted, axis=2)
-    cell = TrainStepCell(sen=sen, temperature=temperature, img_ctx=img_ctx, params=params, mode=mode, name='step_cell')
-    initial_state = cell.zero_state(batch_size=n, dtype=tf.float32)
-    (hlogits, slot_attn, slot_sentinel), h1 = tf.nn.dynamic_rnn(cell=cell, inputs=shifted,
-                                                                initial_state=initial_state, time_major=False)
-    return hlogits, slot_attn, slot_sentinel  # (n, depth, vocab)
-
-
-def apply_attn(img, att, sen):
-    # img (n, w, h, c)
-    # att (n, w, h, frames)
-    # sen (n, frames)
-    h = tf.expand_dims(img, axis=3) * tf.expand_dims(att, axis=4)  # (n, w, h, frames, c)
-    h = tf.reduce_sum(h, axis=(1, 2))  # (n, frames, c)
-    h *= tf.expand_dims(sen, axis=2)  # (n, frames, c)
-    return h
-
-
-def cross_entropy(labels, logits, vocab_size, smoothing=0.):
-    p = softmax_nd(logits, axis=2)  # (n, depth, vocab+2) [end, unknown] + vocab
-    onehot = tf.one_hot(tf.nn.relu(labels - 1), vocab_size + 2, axis=2)  # (n, depth, vocab)
-    if smoothing > 0:
-        onehot = (onehot * (1. - smoothing)) + (smoothing * tf.ones_like(onehot) / (vocab_size + 2.))
-    mask = 1. - tf.cast(tf.equal(labels, 0), tf.float32)  # (n, depth)
-    loss_partial = -(onehot * tf.log(EPSILON + p)) - ((1. - onehot) * tf.log(EPSILON + 1. - p))  # (n, depth, vocab)
-    loss_partial = tf.reduce_sum(loss_partial, axis=2)  # (n, depth)
-    normalizer = tf.reduce_sum(mask, axis=1) + EPSILON
-    loss = tf.reduce_sum(mask * loss_partial, axis=1) / normalizer
-    return loss
-
-
-def nll_loss(labels, logits, vocab_size):
-    p = softmax_nd(logits, axis=2)  # (n, depth, vocab+2) [end, unknown] + vocab
-    onehot = tf.one_hot(tf.nn.relu(labels - 1), vocab_size + 2, axis=2)  # (n, depth, vocab)
-    mask = 1. - tf.cast(tf.equal(labels, 0), tf.float32)  # (n, depth)
-    loss_partial = -(onehot * tf.log(EPSILON + p))  # (n, depth, vocab)
-    loss_partial = tf.reduce_sum(loss_partial, axis=2)  # (n, depth)
-    normalizer = tf.reduce_sum(mask, axis=1)  # + EPSILON
-    loss = tf.reduce_sum(mask * loss_partial, axis=1) / normalizer
-    return loss
-
-
-def get_temperature(params):
-    temperature_raw = tf.train.exponential_decay(params.tau_0,
-                                                 decay_rate=params.tau_decay_rate,
-                                                 decay_steps=params.tau_decay_steps,
-                                                 global_step=tf.train.get_global_step(),
-                                                 name='temperature_raw',
-                                                 staircase=False)
-    temperature = tf.maximum(temperature_raw, params.tau_min, name='temperature')
-    tf.summary.scalar('temperature', temperature)
-    return temperature
+from .caption_model import train_decoder_fn, predict_decoder_fn
+from .gumbel import get_temperature
+from .image_model import slot_vocab_fn, attention_fn, apply_attn
+from .losses import nll_loss, cross_entropy_loss
 
 
 def model_fn(features, labels, mode, params):
@@ -140,11 +12,16 @@ def model_fn(features, labels, mode, params):
 
     temperature = get_temperature(params)
     img_attn, img_sen = attention_fn(img, temperature=temperature, mode=mode, params=params)
-    img_ctx = apply_attn(img=img, att=img_attn, sen=img_sen)  # (image_n, frames, c)
+    img_ctx = apply_attn(img=img, att=img_attn)  # (image_n, frames, c)
+    slot_vocab = slot_vocab_fn(img_ctx=img_ctx, params=params)  # (image_n, frames, vocab+1)
 
     if mode == tf.estimator.ModeKeys.PREDICT:
         logits, slot_attn, slot_sentinel, y1 = predict_decoder_fn(
-            img_ctx=img_ctx, sen=img_sen, params=params, depth=30, mode=mode)
+            slot_vocab=slot_vocab,
+            sen=img_sen,
+            params=params,
+            depth=30,
+            mode=mode)
         predictions = {
             'captions': y1,
             'image_ids': tf.get_default_graph().get_tensor_by_name('image_ids:0'),
@@ -157,42 +34,51 @@ def model_fn(features, labels, mode, params):
     else:
         cap = features['captions']  # (caption_n, depth)
         ass = features['assignments']  # (caption_n,)
-        decoder_ctx = tf.gather(img_ctx, ass, axis=0)  # (caption_n, frames, c)
+        decoder_vocab = tf.gather(slot_vocab, ass, axis=0)  # (caption_n, frames, c)
         decoder_sen = tf.gather(img_sen, ass, axis=0)  # (caption_n, frames)
 
-        logits, slot_attn, slot_sentinel = train_decoder_fn(img_ctx=decoder_ctx, sen=decoder_sen, cap=cap,
-                                                            temperature=temperature, params=params, mode=mode)
-        # slot_attn: (n, depth, frame_size)
-        # slot_sentinelL (n, depth, 1)
-        slot_attn_combo = slot_attn * slot_sentinel
+        logits, slot_attn, slot_sentinel = train_decoder_fn(
+            slot_vocab=decoder_vocab,
+            sen=decoder_sen,
+            cap=cap,
+            temperature=temperature,
+            params=params,
+            mode=mode)
+
+        # Loss
+        true_labels = tf.maximum(cap-1, 0)
         if params.loss == 'cross_entropy':
-            loss = tf.reduce_mean(cross_entropy(labels=cap, logits=logits,
-                                                vocab_size=params.vocab_size, smoothing=params.smoothing))
+            loss = tf.reduce_mean(cross_entropy_loss(
+                labels=true_labels,
+                logits=logits,
+                smoothing=params.smoothing))
         elif params.loss == 'nll':
-            loss = tf.reduce_mean(nll_loss(labels=cap, logits=logits,
-                                           vocab_size=params.vocab_size))
+            loss = tf.reduce_mean(nll_loss(
+                labels=true_labels,
+                logits=logits))
         else:
             raise ValueError()
+
+        # Regularization
+        # slot_attn: (n, depth, frame_size)
+        # slot_sentinel: (n, depth, 1)
         if params.l2 > 0:
             reg = apply_regularization(l2_regularizer(params.l2), tf.trainable_variables())
             tf.summary.scalar("regularization", reg)
             loss += reg
+        if params.unity_reg > 0:
+            mask = 1. - tf.cast(tf.equal(cap, 0), tf.float32) # (n, depth)
+            mask = tf.expand_dims(mask, 2) # (n, depth, 1)
+            slot_sum = tf.reduce_sum(mask * slot_attn * slot_sentinel, axis=1) # (n, frame_size)
+            slot_diff = tf.square(slot_sum - decoder_sen)
+            unity_regularization = params.unity_reg * tf.reduce_mean(tf.reduce_sum(slot_diff, 1))
+            tf.summary.scalar("unity_regularization", unity_regularization)
+            loss += unity_regularization
         if params.img_sen_l1 > 0:
             img_sen_reg = params.img_sen_l1 * tf.reduce_mean(tf.reduce_sum(img_sen, axis=1), axis=0)
             tf.summary.scalar('image_sentinel_regularization', img_sen_reg)
             loss += img_sen_reg
-        mask = 1. - tf.cast(tf.equal(cap, 0), tf.float32) #(n, depth)
 
-        if params.slot_sen_l1 > 0:
-            slot_sen_reg = params.slot_sen_l1 * tf.reduce_mean(tf.reduce_sum(slot_sentinel, axis=(1, 2)), axis=0)
-            tf.summary.scalar('slot_sentinel_regularization', slot_sen_reg)
-            loss += slot_sen_reg
-        if params.slot_spread > 0:
-            slot_spread_reg = params.slot_spread * tf.reduce_mean(
-                tf.square(tf.nn.relu(tf.reduce_sum(slot_attn_combo, axis=1) - 1)))
-            tf.summary.scalar('slot_spread_reg', slot_spread_reg)
-            #todo: apply mask
-            loss += slot_spread_reg
         if mode == tf.estimator.ModeKeys.TRAIN:
             lr = tf.train.exponential_decay(params.lr,
                                             decay_rate=params.decay_rate,

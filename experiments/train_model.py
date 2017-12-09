@@ -22,7 +22,7 @@ def main(_argv):
     run_config = RunConfig(model_dir=model_dir)
     hparams = HParams(lr=0.0001,
                       momentum=0.9,
-                      frame_size=5,
+                      frame_size=10,
                       vocab_size=vocab_size,
                       units=512,
                       decay_rate=0.1,
@@ -32,11 +32,10 @@ def main(_argv):
                       tau_decay_rate=0.5,
                       tau_decay_steps=20000,
                       tau_min=0.1,
-                      slot_sen_l1=0., #1e-2,
-                      img_sen_l1=0., #1e-2,
-                      slot_spread=1e-2,
+                      img_sen_l1=1e-3,
                       loss='nll',
                       l2=1e-7,
+                      unity_reg=1e-2,
                       optimizer='adam',
                       attn_mode_img='soft',
                       batch_size=batch_size)
@@ -56,7 +55,7 @@ def main(_argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/v07',
+    tf.flags.DEFINE_string('model-dir', 'output/model/vocab-model/v2',
                            'Model directory')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')

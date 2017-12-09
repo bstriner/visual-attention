@@ -32,7 +32,7 @@ def main(_argv):
                       tau_decay_rate=0.5,
                       tau_decay_steps=20000,
                       tau_min=0.1,
-                      img_sen_l1=1e-3,
+                      img_sen_l1=0.,
                       loss='nll',
                       l2=1e-7,
                       unity_reg=1e-2,
@@ -55,8 +55,7 @@ def main(_argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/vocab-model/v4',
-                           'Model directory')
+    tf.flags.DEFINE_string('model-dir', 'output/model/v1', 'Model directory')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')
     tf.flags.DEFINE_bool('debug', False, 'Debug mode')

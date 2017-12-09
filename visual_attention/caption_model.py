@@ -57,10 +57,9 @@ class BaseStepCell(RNNCell):
         with tf.name_scope('recurrent_slot_attention'):
             if self.mode == tf.estimator.ModeKeys.PREDICT:
                 slot_attn = tf.one_hot(tf.argmax(input=attn_logits + attn_bias, axis=-1),
-                                       tf.shape(attn_logits)[-1], axis=-1)
+                                       self.frame_size, axis=-1)
             else:
                 slot_attn = gumbel_softmax(logits=attn_logits + attn_bias, temperature=self.temperature, axis=-1)
-
         with tf.control_dependencies([
             tf.assert_rank(slot_attn, 2),
             tf.assert_rank(self.slot_vocab, 3)]):
@@ -71,13 +70,14 @@ class BaseStepCell(RNNCell):
         next_token_generated_logits = tf.layers.dense(
             inputs=generate_hidden,
             units=self.vocab_size + 1,  # [unknown]+vocab
-            name='next_token'
-        )
+            name='next_token',
+            kernel_initializer=self.initializer)
         # Gate between slots and generation
         sent_logits = tf.layers.dense(
             inputs=generate_hidden,
             units=1,
-            name='input_sent')
+            name='input_sent',
+            kernel_initializer=self.initializer)
         with tf.name_scope('recurrent_slot_sentinel'):
             if self.mode == tf.estimator.ModeKeys.PREDICT:
                 slot_sentinel = tf.cast(tf.greater(sent_logits, 0), tf.float32)
@@ -191,15 +191,14 @@ class PredictStepCell(BaseStepCell):
         sen_ctx = self.calc_sen_ctx()
         inp = sen_ctx + h0
         output_logits, slot_attn, slot_sentinel = self.calc_step_output(inp=inp)
-
         y0 = sample_argmax(output_logits, axis=-1) # [end, unk] + vocab
         h1 = self.calc_step_hidden(
             inp=inp,
             y0=y0, # [end, unk] + vocab
             slot_attn=slot_attn,
             slot_sentinel=slot_sentinel)
-
-        return (output_logits, slot_attn, slot_sentinel, y0), h1
+        yout = tf.cast(tf.expand_dims(y0, 1), tf.float32)
+        return (output_logits, slot_attn, slot_sentinel, yout), h1
 
     @property
     def output_size(self):
@@ -259,4 +258,4 @@ def predict_decoder_fn(slot_vocab, sen, params, mode, depth):
         inputs=inputs,
         initial_state=initial_state,
         time_major=False)
-    return logits, slot_attn, slot_sentinel, y1
+    return logits, slot_attn, slot_sentinel, tf.cast(y1, tf.int32)

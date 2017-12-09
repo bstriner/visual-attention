@@ -41,21 +41,26 @@ def write_prediction(output_path, prediction, vocab):
     # print("Image: {}".format(type(img)))
     images.append((img, 'original'))
 
+    slot_vocab = prediction['slot_vocab']  # (slots, vocab+1)
+    assert slot_vocab.ndim == 2
+    slot_tokens = [token_id_to_vocab(i+1, vocab=vocab) for i in np.argmax(slot_vocab, axis=-1)]
+
     # Image attention maps
     image_sentinel = prediction['image_sentinel']
     image_attention = prediction['image_attention']
     assert image_sentinel.ndim == 1
     assert image_attention.ndim == 3
-    for i, s in enumerate(image_sentinel):
+    for i, (s, st) in enumerate(zip(image_sentinel, slot_tokens)):
         if s > 0.5:
             attn_img = image_attention[:, :, i]
             attn_img = cv2.resize(attn_img, (224, 224))
-            images.append((attn_img, 'slot {}'.format(i)))
+            images.append((attn_img, '{}({})'.format(st, i)))
 
     # Write images
     n = len(images)
+    figsize = 2
     if n > 1:
-        f, axs = plt.subplots(nrows=1, ncols=n)
+        f, axs = plt.subplots(nrows=1, ncols=n, figsize=(figsize, n*figsize))
         for i, (im, name) in enumerate(images):
             # print(type(im))
             # print(im.shape)
@@ -64,7 +69,7 @@ def write_prediction(output_path, prediction, vocab):
             ax.set_title(name)
             ax.axis('off')
     else:
-        f = plt.figure()
+        f = plt.figure(figsize=(figsize,figsize))
         plt.imshow(images[0][0])
         plt.title(images[0][1])
         plt.axis('off')
@@ -141,7 +146,7 @@ def main(argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/v07',
+    tf.flags.DEFINE_string('model-dir', 'output/model/vocab-model/v4',
                            'Model directory')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')

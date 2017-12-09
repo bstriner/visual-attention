@@ -25,6 +25,7 @@ def model_fn(features, labels, mode, params):
         predictions = {
             'captions': y1,
             'image_ids': tf.get_default_graph().get_tensor_by_name('image_ids:0'),
+            'slot_vocab': slot_vocab,
             'slot_attention': slot_attn,
             'slot_sentinel': slot_sentinel,
             'image_attention': img_attn,

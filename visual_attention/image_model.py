@@ -63,12 +63,16 @@ def slot_vocab_fn(img_ctx, params):
     # img_ctx: (n, frames, c)
     initializer = tf.initializers.random_uniform(-0.05, 0.05)
     slot_vocab_embedding = tf.get_variable(
-            name='slot_vocab_embedding',
-            shape=[params.frame_size, params.units],  # [end, unknown] + vocab
-            trainable=True,
-            initializer=initializer)
-    img_embedded = tf.layers.dense(inputs=img_ctx, units=params.units, name='img_vocab_embed')
-    h = img_embedded + tf.expand_dims(slot_vocab_embedding, 0)
+        name='slot_vocab_embedding',
+        shape=[params.frame_size, params.units],  # [end, unknown] + vocab
+        trainable=True,
+        initializer=initializer)
+    img_embedded = tf.layers.dense(
+        inputs=img_ctx,
+        units=params.units,
+        name='img_vocab_embed',
+        kernel_initializer=initializer)
+    h = leaky_relu(img_embedded + tf.expand_dims(slot_vocab_embedding, 0))
     for i in range(3):
         h = tf.layers.dense(inputs=h, units=params.units, name='slot_vocab_{}'.format(i))
         h = leaky_relu(h)

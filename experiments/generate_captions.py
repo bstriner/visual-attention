@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 
@@ -53,13 +54,20 @@ def write_prediction(output_path, prediction, vocab):
 
     # Write images
     n = len(images)
-    f, axs = plt.subplots(nrows=1, ncols=n)
-    for i, (im, name) in enumerate(images):
-        # print(type(im))
-        # print(im.shape)
-        axs[i].imshow(im)
-        axs[i].set_title(name)
-        axs[i].axis('off')
+    if n > 1:
+        f, axs = plt.subplots(nrows=1, ncols=n)
+        for i, (im, name) in enumerate(images):
+            # print(type(im))
+            # print(im.shape)
+            ax = axs[i]
+            ax.imshow(im)
+            ax.set_title(name)
+            ax.axis('off')
+    else:
+        f = plt.figure()
+        plt.imshow(images[0][0])
+        plt.title(images[0][1])
+        plt.axis('off')
     f.savefig(output_path + '.png')
     plt.close(f)
 
@@ -96,6 +104,7 @@ def write_prediction(output_path, prediction, vocab):
         f.write(cap_string)
         f.write("\n")
 
+    return cap_string
     # raise ValueError()
 
 
@@ -113,22 +122,26 @@ def generate_captions(model_dir, output_dir):
         params=hparams)
     val_path = 'output/batches/val.npz'
     hook = FeedFnHook(path_fmt=val_path, splits=1, batch_size=hparams.batch_size, predict=True)
-    for i, prediction in enumerate(estimator.predict(input_fn=predict_input_fn, hooks=[hook])):
-        write_prediction(os.path.join(output_dir, '{:08d}'.format(i)),
-                         prediction=prediction, vocab=vocab)
-        if i > 100:
-            break
+    with open(os.path.join(output_dir, 'captions.csv'), 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(['Index', 'Caption'])
+        for i, prediction in enumerate(estimator.predict(input_fn=predict_input_fn, hooks=[hook])):
+            caption = write_prediction(os.path.join(output_dir, '{:08d}'.format(i)),
+                                       prediction=prediction, vocab=vocab)
+            w.writerow([i, caption])
+            if i > 100:
+                break
 
 
 def main(argv):
-    output_dir = 'output/generated'
     model_dir = tf.flags.FLAGS.model_dir
+    output_dir = os.path.join(model_dir, 'generated')
     generate_captions(model_dir=model_dir, output_dir=output_dir)
 
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/v01',
+    tf.flags.DEFINE_string('model-dir', 'output/model/v07',
                            'Model directory')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')

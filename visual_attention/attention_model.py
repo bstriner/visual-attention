@@ -162,6 +162,9 @@ def model_fn(features, labels, mode, params):
 
         logits, slot_attn, slot_sentinel = train_decoder_fn(img_ctx=decoder_ctx, sen=decoder_sen, cap=cap,
                                                             temperature=temperature, params=params, mode=mode)
+        # slot_attn: (n, depth, frame_size)
+        # slot_sentinelL (n, depth, 1)
+        slot_attn_combo = slot_attn * slot_sentinel
         if params.loss == 'cross_entropy':
             loss = tf.reduce_mean(cross_entropy(labels=cap, logits=logits,
                                                 vocab_size=params.vocab_size, smoothing=params.smoothing))
@@ -178,10 +181,18 @@ def model_fn(features, labels, mode, params):
             img_sen_reg = params.img_sen_l1 * tf.reduce_mean(tf.reduce_sum(img_sen, axis=1), axis=0)
             tf.summary.scalar('image_sentinel_regularization', img_sen_reg)
             loss += img_sen_reg
+        mask = 1. - tf.cast(tf.equal(cap, 0), tf.float32) #(n, depth)
+
         if params.slot_sen_l1 > 0:
             slot_sen_reg = params.slot_sen_l1 * tf.reduce_mean(tf.reduce_sum(slot_sentinel, axis=(1, 2)), axis=0)
             tf.summary.scalar('slot_sentinel_regularization', slot_sen_reg)
             loss += slot_sen_reg
+        if params.slot_spread > 0:
+            slot_spread_reg = params.slot_spread * tf.reduce_mean(
+                tf.square(tf.nn.relu(tf.reduce_sum(slot_attn_combo, axis=1) - 1)))
+            tf.summary.scalar('slot_spread_reg', slot_spread_reg)
+            #todo: apply mask
+            loss += slot_spread_reg
         if mode == tf.estimator.ModeKeys.TRAIN:
             lr = tf.train.exponential_decay(params.lr,
                                             decay_rate=params.decay_rate,

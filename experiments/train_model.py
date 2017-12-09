@@ -29,15 +29,16 @@ def main(_argv):
                       decay_steps=300000,
                       smoothing=0.1,
                       tau_0=1.,
-                      tau_decay_rate=0.1,
-                      tau_decay_steps=300000,
+                      tau_decay_rate=0.5,
+                      tau_decay_steps=20000,
                       tau_min=0.1,
-                      slot_sen_l1=1e-4,
-                      img_sen_l1=1e-4,
+                      slot_sen_l1=0., #1e-2,
+                      img_sen_l1=0., #1e-2,
+                      slot_spread=1e-2,
                       loss='nll',
                       l2=1e-7,
                       optimizer='adam',
-                      attn_mode_img='gumbel',
+                      attn_mode_img='soft',
                       batch_size=batch_size)
     hparams.parse(tf.flags.FLAGS.hparams)
     os.makedirs(model_dir, exist_ok=True)
@@ -55,7 +56,7 @@ def main(_argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/v03',
+    tf.flags.DEFINE_string('model-dir', 'output/model/v07',
                            'Model directory')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')

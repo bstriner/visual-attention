@@ -99,7 +99,7 @@ class BaseStepCell(RNNCell):
         # embed y0
         y_embed = tf.get_variable(
             name='y_embed',
-            shape=[self.vocab_size + 3, self._num_units],  # [padding, end, unknown] + vocab
+            shape=[self.vocab_size + 2, self._num_units],  # [end, unknown] + vocab
             trainable=True,
             initializer=self.initializer)
         y_embedded = tf.gather(y_embed, y0, axis=0)  # n, unit
@@ -192,10 +192,10 @@ class PredictStepCell(BaseStepCell):
         inp = sen_ctx + h0
         output_logits, slot_attn, slot_sentinel = self.calc_step_output(inp=inp)
 
-        y0 = sample_argmax(output_logits, axis=-1)
+        y0 = sample_argmax(output_logits, axis=-1) # [end, unk] + vocab
         h1 = self.calc_step_hidden(
             inp=inp,
-            y0=y0 + 1,
+            y0=y0, # [end, unk] + vocab
             slot_attn=slot_attn,
             slot_sentinel=slot_sentinel)
 

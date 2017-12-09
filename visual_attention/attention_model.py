@@ -32,7 +32,9 @@ def model_fn(features, labels, mode, params):
         }
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
     else:
-        cap = features['captions']  # (caption_n, depth)
+        raw_cap = features['captions']  # (caption_n, depth)
+        cap = tf.maximum(raw_cap - 1, 0)  # (caption_n, depth)
+        cap_mask = 1. - tf.cast(tf.equal(cap, 0), tf.float32)  # (caption_n, depth)
         ass = features['assignments']  # (caption_n,)
         decoder_vocab = tf.gather(slot_vocab, ass, axis=0)  # (caption_n, frames, c)
         decoder_sen = tf.gather(img_sen, ass, axis=0)  # (caption_n, frames)
@@ -46,15 +48,16 @@ def model_fn(features, labels, mode, params):
             mode=mode)
 
         # Loss
-        true_labels = tf.maximum(cap-1, 0)
         if params.loss == 'cross_entropy':
             loss = tf.reduce_mean(cross_entropy_loss(
-                labels=true_labels,
+                labels=cap,
+                mask=cap_mask,
                 logits=logits,
                 smoothing=params.smoothing))
         elif params.loss == 'nll':
             loss = tf.reduce_mean(nll_loss(
-                labels=true_labels,
+                labels=cap,
+                mask=cap_mask,
                 logits=logits))
         else:
             raise ValueError()
@@ -67,9 +70,7 @@ def model_fn(features, labels, mode, params):
             tf.summary.scalar("regularization", reg)
             loss += reg
         if params.unity_reg > 0:
-            mask = 1. - tf.cast(tf.equal(cap, 0), tf.float32) # (n, depth)
-            mask = tf.expand_dims(mask, 2) # (n, depth, 1)
-            slot_sum = tf.reduce_sum(mask * slot_attn * slot_sentinel, axis=1) # (n, frame_size)
+            slot_sum = tf.reduce_sum(tf.expand_dims(cap_mask, 2) * slot_attn * slot_sentinel, axis=1)  # (n, frame_size)
             slot_diff = tf.square(slot_sum - decoder_sen)
             unity_regularization = params.unity_reg * tf.reduce_mean(tf.reduce_sum(slot_diff, 1))
             tf.summary.scalar("unity_regularization", unity_regularization)

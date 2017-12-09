@@ -11,7 +11,7 @@ from visual_attention.make_experiment import experiment_fn
 
 
 def main(_argv):
-    batch_size = 64
+    batch_size = 32
     if tf.flags.FLAGS.debug:
         enable_debugging_monkey_patch()
         batch_size = 1
@@ -61,7 +61,7 @@ def main(_argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx/v3', 'Model directory')
+    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx/v5', 'Model directory')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')
     tf.flags.DEFINE_bool('debug', False, 'Debug mode')

@@ -47,10 +47,21 @@ def sample_argmax(logits, axis=-1):
     return tf.argmax(logits + g, axis=axis)
 
 
-def sample_one_hot(logits, srng, axis=-1):
-    g = sample_gumbel(shape=logits.shape)
+def sample_one_hot(logits, axis=-1, depth=None):
+    if depth is None:
+        depth = logits.get_shape()[axis]
+    if depth is None:
+        depth = tf.shape(logits)[axis]
+    g = sample_gumbel(shape=tf.shape(logits))
     h = logits + g
-    return tf.one_hot(tf.argmax(h, axis=axis), tf.shape(h)[axis])
+    return tf.one_hot(tf.argmax(h, axis=axis), depth=depth, axis=axis)
+
+
+def sample_sigmoid(logits):
+    sig = tf.nn.sigmoid(logits)
+    rnd = tf.random_uniform(shape=tf.shape(sig), minval=0, maxval=1, dtype=tf.float32)
+    samp = tf.cast(tf.greater(sig, rnd), tf.float32)
+    return samp
 
 
 def gumbel_softmax(logits, temperature, hard=False, axis=-1):

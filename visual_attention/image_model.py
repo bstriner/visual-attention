@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from .gumbel import gumbel_softmax, gumbel_sigmoid, softmax_nd
+from .gumbel import gumbel_softmax, gumbel_sigmoid, softmax_nd, sample_one_hot, sample_sigmoid
 from .util import leaky_relu
 
 
@@ -13,10 +13,14 @@ def attention_fn(img, temperature, mode, params):
 
     # Convolutional network
     h = img
+    if params.dropout_img_input > 0:
+        h = tf.layers.dropout(inputs=h, rate=params.dropout_img_input, training=training)
     for i in range(3):
         h = tf.layers.conv2d(inputs=h, filters=params.units, kernel_size=[3, 3],
                              padding="same", name='attn_conv{}'.format(i), **cnn_args)
         h = activation(h)
+        if params.dropout_img_hidden > 0:
+            h = tf.layers.dropout(inputs=h, rate=params.dropout_img_hidden, training=training)
 
     h_att = tf.layers.conv2d(inputs=h, filters=frame_size, kernel_size=[3, 3],
                              padding="same", name='attn_att', **cnn_args)
@@ -33,7 +37,10 @@ def attention_fn(img, temperature, mode, params):
         h = tf.transpose(h_att, (0, 3, 1, 2))  # (n,c,h,w)
         h = tf.reshape(h, (n * frame_size, 14 * 14))  # (n*c, h*w)
         if mode == tf.estimator.ModeKeys.PREDICT:
-            h = tf.one_hot(tf.argmax(h, axis=1), tf.shape(h)[1], axis=1)
+            if tf.flags.FLAGS.deterministic:
+                h = tf.one_hot(tf.argmax(h, axis=1), depth=h.shape[1].value, axis=1)
+            else:
+                h = sample_one_hot(logits=h, axis=1)
         else:
             h = gumbel_softmax(logits=h, temperature=temperature, axis=1)
         h = tf.reshape(h, (n, frame_size, 14, 14))
@@ -44,18 +51,26 @@ def attention_fn(img, temperature, mode, params):
         raise ValueError()
 
     # sentinel
-    h = tf.reduce_mean(h_sen, axis=(1, 2))  # (n, c)
-    sen = gumbel_sigmoid(h, temperature=temperature)  # (n, c)
+    sen_logits = tf.reduce_mean(h_sen, axis=(1, 2))  # (n, c)
+    if mode == tf.estimator.ModeKeys.PREDICT:
+        if tf.flags.FLAGS.deterministic:
+            sen = tf.cast(tf.greater(sen_logits, 0), tf.float32)
+        else:
+            sen = sample_sigmoid(sen_logits)
+    else:
+        sen = gumbel_sigmoid(sen_logits, temperature=temperature)  # (n, c)
     tf.summary.histogram('image_sentinel', sen)
     return attn, sen
 
 
-def apply_attn(img, att):
+def apply_attn(img, att, sen=None):
     # img (n, w, h, c)
     # att (n, w, h, frames)
     # sen (n, frames)
     h = tf.expand_dims(img, axis=3) * tf.expand_dims(att, axis=4)  # (n, w, h, frames, c)
     h = tf.reduce_sum(h, axis=(1, 2))  # (n, frames, c)
+    if sen is not None:
+        h *= tf.expand_dims(sen, axis=2)
     return h  # (n, frames, c)
 
 

@@ -12,12 +12,19 @@ def model_fn(features, labels, mode, params):
 
     temperature = get_temperature(params)
     img_attn, img_sen = attention_fn(img, temperature=temperature, mode=mode, params=params)
-    img_ctx = apply_attn(img=img, att=img_attn)  # (image_n, frames, c)
-    slot_vocab = slot_vocab_fn(img_ctx=img_ctx, params=params)  # (image_n, frames, vocab+1)
+
+    if params.use_slot_vocab:
+        img_ctx = apply_attn(img=img, att=img_attn)  # , sen=img_sen)  # (image_n, frames, c)
+        slot_vocab = slot_vocab_fn(img_ctx=img_ctx, params=params)  # (image_n, frames, vocab+1)
+        slot_vocab *= tf.expand_dims(img_sen, axis=2)
+    else:
+        img_ctx = apply_attn(img=img, att=img_attn, sen=img_sen)  # (image_n, frames, c)
+        slot_vocab = None
 
     if mode == tf.estimator.ModeKeys.PREDICT:
         logits, slot_attn, slot_sentinel, y1 = predict_decoder_fn(
             slot_vocab=slot_vocab,
+            img_ctx=img_ctx,
             sen=img_sen,
             params=params,
             depth=30,
@@ -25,23 +32,29 @@ def model_fn(features, labels, mode, params):
         predictions = {
             'captions': y1,
             'image_ids': tf.get_default_graph().get_tensor_by_name('image_ids:0'),
-            'slot_vocab': slot_vocab,
             'slot_attention': slot_attn,
             'slot_sentinel': slot_sentinel,
             'image_attention': img_attn,
             'image_sentinel': img_sen
         }
+        if slot_vocab is not None:
+            predictions['slot_vocab'] = slot_vocab
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
     else:
         raw_cap = features['captions']  # (caption_n, depth)
         cap = tf.maximum(raw_cap - 1, 0)  # (caption_n, depth)
         cap_mask = 1. - tf.cast(tf.equal(raw_cap, 0), tf.float32)  # (caption_n, depth)
         ass = features['assignments']  # (caption_n,)
-        decoder_vocab = tf.gather(slot_vocab, ass, axis=0)  # (caption_n, frames, c)
+        if slot_vocab is not None:
+            decoder_vocab = tf.gather(slot_vocab, ass, axis=0)  # (caption_n, frames, c)
+        else:
+            decoder_vocab = None
         decoder_sen = tf.gather(img_sen, ass, axis=0)  # (caption_n, frames)
+        decoder_img_ctx = tf.gather(img_ctx, ass, axis=0)
 
         logits, slot_attn, slot_sentinel = train_decoder_fn(
             slot_vocab=decoder_vocab,
+            img_ctx=decoder_img_ctx,
             sen=decoder_sen,
             cap=cap,
             temperature=temperature,

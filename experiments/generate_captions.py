@@ -60,7 +60,7 @@ def write_prediction(output_path, prediction, vocab):
     n = len(images)
     figsize = 2
     if n > 1:
-        f, axs = plt.subplots(nrows=1, ncols=n, figsize=(figsize, n*figsize))
+        f, axs = plt.subplots(nrows=1, ncols=n, figsize=(n*figsize, figsize))
         for i, (im, name) in enumerate(images):
             # print(type(im))
             # print(im.shape)
@@ -80,7 +80,6 @@ def write_prediction(output_path, prediction, vocab):
     caption = prediction['captions']
     slot_sentinel = prediction['slot_sentinel']
     slot_attention = prediction['slot_attention']
-    caption = np.squeeze(caption, 1)
     slot_sentinel = np.squeeze(slot_sentinel, 1)
     assert caption.ndim == 1
     assert slot_sentinel.ndim == 1
@@ -146,7 +145,7 @@ def main(argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/vocab-model/v4',
+    tf.flags.DEFINE_string('model-dir', 'output/model/v3',
                            'Model directory')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')

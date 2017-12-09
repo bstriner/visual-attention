@@ -35,7 +35,7 @@ def model_fn(features, labels, mode, params):
     else:
         raw_cap = features['captions']  # (caption_n, depth)
         cap = tf.maximum(raw_cap - 1, 0)  # (caption_n, depth)
-        cap_mask = 1. - tf.cast(tf.equal(cap, 0), tf.float32)  # (caption_n, depth)
+        cap_mask = 1. - tf.cast(tf.equal(raw_cap, 0), tf.float32)  # (caption_n, depth)
         ass = features['assignments']  # (caption_n,)
         decoder_vocab = tf.gather(slot_vocab, ass, axis=0)  # (caption_n, frames, c)
         decoder_sen = tf.gather(img_sen, ass, axis=0)  # (caption_n, frames)
@@ -76,8 +76,12 @@ def model_fn(features, labels, mode, params):
             unity_regularization = params.unity_reg * tf.reduce_mean(tf.reduce_sum(slot_diff, 1))
             tf.summary.scalar("unity_regularization", unity_regularization)
             loss += unity_regularization
-        if params.img_sen_l1 > 0:
-            img_sen_reg = params.img_sen_l1 * tf.reduce_mean(tf.reduce_sum(img_sen, axis=1), axis=0)
+        if params.img_sen_l1 > 0 or params.img_sen_l2 > 0:
+            img_sen_reg = 0
+            if params.img_sen_l1 > 0:
+                img_sen_reg += params.img_sen_l1 * tf.reduce_mean(tf.reduce_sum(img_sen, axis=1), axis=0)
+            if params.img_sen_l2 > 0:
+                img_sen_reg += params.img_sen_l2 * tf.reduce_mean(tf.square(tf.reduce_sum(img_sen, axis=1)), axis=0)
             tf.summary.scalar('image_sentinel_regularization', img_sen_reg)
             loss += img_sen_reg
 

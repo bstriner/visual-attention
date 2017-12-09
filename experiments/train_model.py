@@ -24,18 +24,19 @@ def main(_argv):
                       momentum=0.9,
                       frame_size=10,
                       vocab_size=vocab_size,
-                      units=512,
+                      units=750,
                       decay_rate=0.1,
                       decay_steps=300000,
                       smoothing=0.1,
                       tau_0=1.,
-                      tau_decay_rate=0.5,
+                      tau_decay_rate=0.7,
                       tau_decay_steps=20000,
                       tau_min=0.1,
                       img_sen_l1=0.,
+                      img_sen_l2=1e-3,
                       loss='nll',
                       l2=1e-7,
-                      unity_reg=1e-2,
+                      unity_reg=1e-1,
                       optimizer='adam',
                       attn_mode_img='soft',
                       batch_size=batch_size)
@@ -55,7 +56,7 @@ def main(_argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/v1', 'Model directory')
+    tf.flags.DEFINE_string('model-dir', 'output/model/v5', 'Model directory')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')
     tf.flags.DEFINE_bool('debug', False, 'Debug mode')

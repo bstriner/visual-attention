@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.python.ops.rnn_cell import RNNCell
 
-from .gumbel import gumbel_softmax, gumbel_sigmoid, sample_argmax
+from .gumbel import gumbel_softmax, gumbel_sigmoid
 
 EPSILON = 1e-7
 
@@ -83,8 +83,8 @@ class BaseStepCell(RNNCell):
                 slot_sentinel = tf.cast(tf.greater(sent_logits, 0), tf.float32)
             else:
                 slot_sentinel = gumbel_sigmoid(logits=sent_logits, temperature=self.temperature)
-        next_token_logits = (slot_sentinel * next_token_slot_logits) + (
-                (1. - slot_sentinel) * next_token_generated_logits)
+        next_token_logits = ((slot_sentinel * next_token_slot_logits) +
+                             ((1. - slot_sentinel) * next_token_generated_logits))
         # end token
         end_token_logits = tf.layers.dense(
             inputs=generate_hidden,
@@ -191,10 +191,11 @@ class PredictStepCell(BaseStepCell):
         sen_ctx = self.calc_sen_ctx()
         inp = sen_ctx + h0
         output_logits, slot_attn, slot_sentinel = self.calc_step_output(inp=inp)
-        y0 = sample_argmax(output_logits, axis=-1) # [end, unk] + vocab
+        # y0 = sample_argmax(output_logits, axis=-1)  # [end, unk] + vocab
+        y0 = tf.argmax(output_logits, axis=-1)
         h1 = self.calc_step_hidden(
             inp=inp,
-            y0=y0, # [end, unk] + vocab
+            y0=y0,  # [end, unk] + vocab
             slot_attn=slot_attn,
             slot_sentinel=slot_sentinel)
         yout = tf.cast(tf.expand_dims(y0, 1), tf.float32)
@@ -258,4 +259,4 @@ def predict_decoder_fn(slot_vocab, sen, params, mode, depth):
         inputs=inputs,
         initial_state=initial_state,
         time_major=False)
-    return logits, slot_attn, slot_sentinel, tf.cast(y1, tf.int32)
+    return logits, slot_attn, slot_sentinel, tf.cast(tf.squeeze(y1, 2), tf.int32)

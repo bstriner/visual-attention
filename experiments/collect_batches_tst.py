@@ -2,6 +2,7 @@ import json
 import os
 
 import numpy as np
+from tqdm import tqdm
 
 
 def merge_batches_tst(annotation_path, image_path_fmt, output_fmt, splits):
@@ -10,12 +11,14 @@ def merge_batches_tst(annotation_path, image_path_fmt, output_fmt, splits):
     image_ids = np.array([img['id'] for img in annotation_data['images']], np.int32)
     n = image_ids.shape[0]
     batch_size = n // splits
-    for i in range(n):
-        i0 = i*batch_size
-        i1 = i0 + batch_size
-        if i1 > n:
+    for i in tqdm(range(splits), desc='Merging batches'):
+        i0 = i * batch_size
+        if i + 1 < splits:
+            i1 = i0 + batch_size
+        else:
             i1 = n
-        batch_n = i1-i0
+        batch_n = i1 - i0
+        assert batch_n > 0
         batch_image_ids = image_ids[i0:i1]
         batch_images = np.zeros((batch_n, 14, 14, 512), dtype=np.float32)
         for j in range(batch_n):
@@ -30,7 +33,7 @@ def merge_batches_tst(annotation_path, image_path_fmt, output_fmt, splits):
 
 def main():
     splits = 10
-    annotation_path = os.path.join(os.environ['MSCOCO_PATH'], 'image_info_test2017.json')
+    annotation_path = os.path.join(os.environ['MSCOCO_PATH'], 'annotations', 'image_info_test2017.json')
     os.makedirs('output/batches', exist_ok=True)
     merge_batches_tst(annotation_path=annotation_path,
                       image_path_fmt='output/features/test/{:012d}.npy',

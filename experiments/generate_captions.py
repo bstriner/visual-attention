@@ -142,7 +142,7 @@ def main(argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx/v2', 'Model directory')
+    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx/v5', 'Model directory')
     tf.flags.DEFINE_string('batch-path', 'output/batches/val.npz', 'Batch path')
     tf.flags.DEFINE_string('cropped-path', 'output/cropped/val', 'Cropped path')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')

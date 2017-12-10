@@ -41,7 +41,7 @@ def main(_argv):
                       cap_dropout_input=0.2,
                       cap_dropout_hidden=0.5,
                       l2=1e-7,
-                      unity_reg=1e-2,
+                      unity_reg=1e-3,
                       optimizer='adam',
                       attn_mode_img='soft',
                       batch_size=batch_size)
@@ -61,7 +61,7 @@ def main(_argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx/v5', 'Model directory')
+    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx/v7', 'Model directory')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')
     tf.flags.DEFINE_bool('debug', False, 'Debug mode')

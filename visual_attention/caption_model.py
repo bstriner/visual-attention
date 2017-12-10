@@ -71,16 +71,17 @@ class BaseStepCell(RNNCell):
             inputs=generate_hidden,
             units=self.frame_size,
             name='input_attn_final')
-        attn_bias = tf.log(1e-7 + self.sen)
+        #attn_bias = tf.log(1e-7 + self.sen)
+        #attn_logits += attn_bias
         with tf.name_scope('recurrent_slot_attention'):
             if self.mode == tf.estimator.ModeKeys.PREDICT:
                 if tf.flags.FLAGS.deterministic:
-                    slot_attn = tf.one_hot(tf.argmax(attn_logits + attn_bias, axis=-1),
+                    slot_attn = tf.one_hot(tf.argmax(attn_logits, axis=-1),
                                            depth=self.frame_size, axis=-1)
                 else:
-                    slot_attn = sample_one_hot(logits=attn_logits+attn_bias, axis=-1)
+                    slot_attn = sample_one_hot(logits=attn_logits, axis=-1)
             else:
-                slot_attn = gumbel_softmax(logits=attn_logits + attn_bias, temperature=self.temperature, axis=-1)
+                slot_attn = gumbel_softmax(logits=attn_logits, temperature=self.temperature, axis=-1)
 
         # Gate between slots and generation
         sent_logits = tf.layers.dense(
@@ -126,8 +127,8 @@ class BaseStepCell(RNNCell):
                 name='img_ctx_attn',
                 kernel_initializer=self.initializer)
             h = img_ctx_attn + generate_hidden
-            if self.dropout_input > 0:
-                h = tf.layers.dropout(inputs=h, rate=self.dropout_input, training=self.training)
+            #if self.dropout_input > 0:
+            #    h = tf.layers.dropout(inputs=h, rate=self.dropout_input, training=self.training)
             for i in range(3):
                 h = tf.layers.dense(
                 inputs=h,
@@ -170,6 +171,8 @@ class BaseStepCell(RNNCell):
         slot_ctx = slot_ctx0 + slot_ctx1
         # Calculate hidden state
         h = inp + y_embedded + slot_ctx
+        if self.dropout_input > 0:
+            h = tf.layers.dropout(inputs=h, rate=self.dropout_input, training=self.training)
         for j in range(3):
             h = tf.layers.dense(
                 inputs=h,
@@ -177,6 +180,8 @@ class BaseStepCell(RNNCell):
                 kernel_initializer=self.initializer,
                 name='forward{}'.format(j))
             h = self.activation(h)
+            if self.dropout_hidden > 0:
+                h = tf.layers.dropout(inputs=h, rate=self.dropout_hidden, training=self.training)
         hd = tf.layers.dense(
             inputs=h,
             units=self._num_units,

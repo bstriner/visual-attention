@@ -27,7 +27,7 @@ def merge_batches_tst(annotation_path, image_path_fmt, output_fmt, splits):
             image_feats = np.load(image_path)
             batch_images[j, :, :, :] = image_feats
         batch_path = output_fmt.format(i)
-        np.savez(batch_path, images=batch_images, image_ids=image_ids)
+        np.savez(batch_path, images=batch_images, image_ids=batch_image_ids)
     print("Image count: {}".format(n))
 
 

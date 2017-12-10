@@ -44,6 +44,7 @@ def main(_argv):
                       unity_reg=1e-3,
                       optimizer='adam',
                       attn_mode_img='soft',
+                      use_img_sen=False,
                       batch_size=batch_size)
     hparams.parse(tf.flags.FLAGS.hparams)
     os.makedirs(model_dir, exist_ok=True)
@@ -61,7 +62,7 @@ def main(_argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx/v8', 'Model directory')
+    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx-nosen/v1', 'Model directory')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')
     tf.flags.DEFINE_bool('debug', False, 'Debug mode')

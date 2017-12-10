@@ -50,17 +50,20 @@ def attention_fn(img, temperature, mode, params):
     else:
         raise ValueError()
 
-    # sentinel
-    sen_logits = tf.reduce_mean(h_sen, axis=(1, 2))  # (n, c)
-    if mode == tf.estimator.ModeKeys.PREDICT:
-        if tf.flags.FLAGS.deterministic:
-            sen = tf.cast(tf.greater(sen_logits, 0), tf.float32)
+    if params.use_img_sen:
+        # sentinel
+        sen_logits = tf.reduce_mean(h_sen, axis=(1, 2))  # (n, c)
+        if mode == tf.estimator.ModeKeys.PREDICT:
+            if tf.flags.FLAGS.deterministic:
+                sen = tf.cast(tf.greater(sen_logits, 0), tf.float32)
+            else:
+                sen = sample_sigmoid(sen_logits)
         else:
-            sen = sample_sigmoid(sen_logits)
+            sen = gumbel_sigmoid(sen_logits, temperature=temperature)  # (n, c)
+        tf.summary.histogram('image_sentinel', sen)
+        return attn, sen
     else:
-        sen = gumbel_sigmoid(sen_logits, temperature=temperature)  # (n, c)
-    tf.summary.histogram('image_sentinel', sen)
-    return attn, sen
+        return attn, None
 
 
 def apply_attn(img, att, sen=None):

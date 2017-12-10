@@ -16,7 +16,8 @@ def model_fn(features, labels, mode, params):
     if params.use_slot_vocab:
         img_ctx = apply_attn(img=img, att=img_attn)  # , sen=img_sen)  # (image_n, frames, c)
         slot_vocab = slot_vocab_fn(img_ctx=img_ctx, params=params)  # (image_n, frames, vocab+1)
-        slot_vocab *= tf.expand_dims(img_sen, axis=2)
+        if img_sen is not None:
+            slot_vocab *= tf.expand_dims(img_sen, axis=2)
     else:
         img_ctx = apply_attn(img=img, att=img_attn, sen=img_sen)  # (image_n, frames, c)
         slot_vocab = None
@@ -34,11 +35,13 @@ def model_fn(features, labels, mode, params):
             'image_ids': tf.get_default_graph().get_tensor_by_name('image_ids:0'),
             'slot_attention': slot_attn,
             'slot_sentinel': slot_sentinel,
-            'image_attention': img_attn,
-            'image_sentinel': img_sen
+            'image_attention': img_attn
         }
         if slot_vocab is not None:
             predictions['slot_vocab'] = slot_vocab
+        if img_sen is not None:
+            predictions['image_sentinel'] = img_sen
+
         return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
     else:
         raw_cap = features['captions']  # (caption_n, depth)
@@ -49,7 +52,10 @@ def model_fn(features, labels, mode, params):
             decoder_vocab = tf.gather(slot_vocab, ass, axis=0)  # (caption_n, frames, c)
         else:
             decoder_vocab = None
-        decoder_sen = tf.gather(img_sen, ass, axis=0)  # (caption_n, frames)
+        if img_sen is not None:
+            decoder_sen = tf.gather(img_sen, ass, axis=0)  # (caption_n, frames)
+        else:
+            decoder_sen = None
         decoder_img_ctx = tf.gather(img_ctx, ass, axis=0)
 
         logits, slot_attn, slot_sentinel = train_decoder_fn(
@@ -83,13 +89,13 @@ def model_fn(features, labels, mode, params):
             reg = apply_regularization(l2_regularizer(params.l2), tf.trainable_variables())
             tf.summary.scalar("regularization", reg)
             loss += reg
-        if params.unity_reg > 0:
+        if params.unity_reg > 0 and decoder_sen is not None:
             slot_sum = tf.reduce_sum(tf.expand_dims(cap_mask, 2) * slot_attn * slot_sentinel, axis=1)  # (n, frame_size)
             slot_diff = tf.square(slot_sum - decoder_sen)
             unity_regularization = params.unity_reg * tf.reduce_mean(tf.reduce_sum(slot_diff, 1))
             tf.summary.scalar("unity_regularization", unity_regularization)
             loss += unity_regularization
-        if params.img_sen_l1 > 0 or params.img_sen_l2 > 0:
+        if (params.img_sen_l1 > 0 or params.img_sen_l2 > 0) and img_sen is not None:
             img_sen_reg = 0
             if params.img_sen_l1 > 0:
                 img_sen_reg += params.img_sen_l1 * tf.reduce_mean(tf.reduce_sum(img_sen, axis=1), axis=0)

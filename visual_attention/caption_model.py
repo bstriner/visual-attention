@@ -202,17 +202,20 @@ class BaseStepCell(RNNCell):
         return hd
 
     def calc_sen_ctx(self):
-        sen_ctx0 = tf.layers.dense(
-            inputs=self.sen,
-            units=self._num_units,
-            kernel_initializer=self.initializer,
-            name='sen_ctx0')
-        sen_ctx1 = tf.layers.dense(
-            inputs=1. - self.sen,
-            units=self._num_units,
-            kernel_initializer=self.initializer,
-            name='sen_ctx1')
-        return sen_ctx0 + sen_ctx1
+        if self.sen is None:
+            return 0
+        else:
+            sen_ctx0 = tf.layers.dense(
+                inputs=self.sen,
+                units=self._num_units,
+                kernel_initializer=self.initializer,
+                name='sen_ctx0')
+            sen_ctx1 = tf.layers.dense(
+                inputs=1. - self.sen,
+                units=self._num_units,
+                kernel_initializer=self.initializer,
+                name='sen_ctx1')
+            return sen_ctx0 + sen_ctx1
 
 
 class TrainStepCell(BaseStepCell):

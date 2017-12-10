@@ -126,14 +126,26 @@ class BaseStepCell(RNNCell):
                 units=self._num_units,
                 name='img_ctx_attn',
                 kernel_initializer=self.initializer)
-            h = img_ctx_attn + generate_hidden
-            #if self.dropout_input > 0:
-            #    h = tf.layers.dropout(inputs=h, rate=self.dropout_input, training=self.training)
+            slot_combined_attn = slot_sentinel * slot_attn  # (n, frame_size)
+            slot_ctx0 = tf.layers.dense(
+                inputs=slot_combined_attn,
+                units=self._num_units,
+                kernel_initializer=self.initializer,
+                name='slot_op_ctx0')
+            slot_ctx1 = tf.layers.dense(
+                inputs=1. - slot_combined_attn,
+                units=self._num_units,
+                kernel_initializer=self.initializer,
+                name='slot_op_ctx1')
+            slot_ctx = slot_ctx0 + slot_ctx1
+            h = inp + img_ctx_attn + slot_ctx
+            if self.dropout_input > 0:
+                h = tf.layers.dropout(inputs=h, rate=self.dropout_input, training=self.training)
             for i in range(3):
                 h = tf.layers.dense(
                 inputs=h,
                 units=self._num_units,
-                name='img_ctx_attn_{}'.format(i),
+                name='img_ctx_attnop_{}'.format(i),
                 kernel_initializer=self.initializer)
                 h = self.activation(h)
                 if self.dropout_hidden > 0:

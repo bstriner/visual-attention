@@ -61,7 +61,7 @@ def main(_argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx/v7', 'Model directory')
+    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx/v8', 'Model directory')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')
     tf.flags.DEFINE_bool('debug', False, 'Debug mode')

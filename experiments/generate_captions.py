@@ -16,19 +16,7 @@ from tensorflow.python.estimator.estimator import Estimator
 
 from visual_attention.attention_model import model_fn
 from visual_attention.feed_data import predict_input_fn, FeedFnHook
-
-
-def token_id_to_vocab(token_id, vocab):
-    token_id = int(np.asscalar(token_id))
-    # print("Token: {}, {}".format(token_id, type(token_id)))
-    if token_id == 0:
-        return '_END_'
-    elif token_id == 1:
-        return '_UNK_'
-    else:
-        v = vocab[token_id - 2].decode('ascii')
-        # print("v: {},{}".format(v, type(v)))
-        return v
+from visual_attention.util import token_id_to_vocab
 
 
 def write_prediction(output_path, prediction, vocab, use_slot_vocab):

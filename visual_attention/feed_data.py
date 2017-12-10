@@ -21,12 +21,15 @@ def predict_input_fn():
 
 
 class FeedFnHook(SessionRunHook):
-    def __init__(self, path_fmt, splits, batch_size, predict=False):
+    def __init__(self, path_fmt, splits, batch_size, predict=False, single_pass=False):
         self.path_fmt = path_fmt
         self.splits = splits
         self.batch_size = batch_size
         self.predict = predict
-        self.batch_iter = self.gen_splits_forever()
+        if single_pass:
+            self.batch_iter = self.gen_splits()
+        else:
+            self.batch_iter = self.gen_splits_forever()
 
     def load_placeholders(self, graph):
         placeholder_images = graph.get_tensor_by_name("images:0")
@@ -41,12 +44,12 @@ class FeedFnHook(SessionRunHook):
     def gen_split_batches(self, split):
         path = self.path_fmt.format(split)
         data = np.load(path)
-        annotations = data['annotations']
         images = data['images']
         image_ids = data['batch_image_ids']
         n = images.shape[0]
         idx = np.arange(n)
-        np.random.shuffle(idx)
+        if not tf.flags.FLAGS.deterministic:
+            np.random.shuffle(idx)
         batch_count = -((-n) // self.batch_size)
         for i in range(batch_count):
             i0 = i * self.batch_size
@@ -59,6 +62,7 @@ class FeedFnHook(SessionRunHook):
             if self.predict:
                 yield batch_images, batch_image_ids
             else:
+                annotations = data['annotations']
                 batch_assignments = []
                 cap_n = 0
                 cap_d = 0
@@ -81,7 +85,8 @@ class FeedFnHook(SessionRunHook):
 
     def gen_splits(self):
         idx = np.arange(self.splits)
-        np.random.shuffle(idx)
+        if not tf.flags.FLAGS.deterministic:
+            np.random.shuffle(idx)
         for i in idx:
             for j in self.gen_split_batches(i):
                 yield j

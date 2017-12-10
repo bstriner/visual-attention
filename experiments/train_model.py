@@ -30,7 +30,7 @@ def main(_argv):
                       decay_steps=300000,
                       smoothing=0.1,
                       tau_0=1.,
-                      tau_decay_rate=0.50,
+                      tau_decay_rate=0.80,
                       tau_decay_steps=20000,
                       tau_min=0.1,
                       img_sen_l1=0.,

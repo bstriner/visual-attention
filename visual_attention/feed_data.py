@@ -45,7 +45,10 @@ class FeedFnHook(SessionRunHook):
         path = self.path_fmt.format(split)
         data = np.load(path)
         images = data['images']
-        image_ids = data['batch_image_ids']
+        if 'batch_image_ids' in data:
+            image_ids = data['batch_image_ids']
+        else:
+            image_ids = data['image_ids']
         n = images.shape[0]
         idx = np.arange(n)
         if not tf.flags.FLAGS.deterministic:

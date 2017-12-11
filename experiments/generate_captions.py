@@ -39,10 +39,13 @@ def write_prediction(output_path, prediction, vocab, use_slot_vocab):
         slot_tokens = [token_id_to_vocab(i + 1, vocab=vocab) for i in np.argmax(slot_vocab, axis=-1)]
 
     # Image attention maps
-    image_sentinel = prediction['image_sentinel']
     image_attention = prediction['image_attention']
-    assert image_sentinel.ndim == 1
     assert image_attention.ndim == 3
+    if 'image_sentinel' in prediction:
+        image_sentinel = prediction['image_sentinel']
+    else:
+        image_sentinel = np.ones((image_attention.shape[2],))
+    assert image_sentinel.ndim == 1
     for i, s in enumerate(image_sentinel):
         if s > 0.5:
             attn_img = image_attention[:, :, i]
@@ -142,7 +145,7 @@ def main(argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx/v5', 'Model directory')
+    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx-nosen/v1', 'Model directory')
     tf.flags.DEFINE_string('batch-path', 'output/batches/val.npz', 'Batch path')
     tf.flags.DEFINE_string('cropped-path', 'output/cropped/val', 'Cropped path')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')

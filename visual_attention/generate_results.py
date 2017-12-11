@@ -1,6 +1,3 @@
-import matplotlib
-
-matplotlib.use('AGG')
 
 import json
 import os
@@ -14,7 +11,7 @@ from tensorflow.python.estimator.estimator import Estimator
 from visual_attention.attention_model import model_fn
 from visual_attention.feed_data import predict_input_fn, FeedFnHook
 from visual_attention.util import token_id_to_vocab
-
+from tqdm import tqdm
 
 def calc_caption(prediction, vocab):
     # Calculate generated caption
@@ -44,29 +41,14 @@ def generate_results(model_dir, results_path):
         config=run_config,
         params=hparams)
     val_path = tf.flags.FLAGS.batch_path
-    hook = FeedFnHook(path_fmt=val_path, splits=1, batch_size=hparams.batch_size, predict=True)
+    splits = tf.flags.FLAGS.batch_splits
+    hook = FeedFnHook(path_fmt=val_path, splits=splits, batch_size=hparams.batch_size, predict=True, single_pass=True)
 
     results = []
+    it = tqdm(desc='Generating results')
     for prediction in estimator.predict(input_fn=predict_input_fn, hooks=[hook]):
         caption = calc_caption(prediction=prediction, vocab=vocab)
-        results.append({'image_id': prediction['image_id'], 'caption': caption})
+        results.append({'image_id': np.asscalar(prediction['image_ids']), 'caption': caption})
+        it.update(1)
     with open(results_path, 'w') as f:
         json.dump(results, f)
-
-
-def main(argv):
-    model_dir = tf.flags.FLAGS.model_dir
-    results_path = os.path.join(model_dir, 'results.json')
-    generate_results(model_dir=model_dir, results_path=results_path)
-
-
-if __name__ == '__main__':
-    tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx/v2', 'Model directory')
-    tf.flags.DEFINE_string('batch-path', 'output/batches/test.npy', 'Batch path')
-    tf.flags.DEFINE_string('cropped-path', 'output/cropped/test', 'Cropped path')
-    tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
-    tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')
-    tf.flags.DEFINE_bool('debug', False, 'Debug mode')
-    tf.flags.DEFINE_bool('deterministic', True, 'Deterministic')
-    tf.app.run()

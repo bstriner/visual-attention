@@ -17,10 +17,10 @@ def main(argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx-nosen/v1', 'Model directory')
-    tf.flags.DEFINE_string('batch-path', 'output/batches/test-{}.npz', 'Batch path')
-    tf.flags.DEFINE_integer('batch-splits', 10, 'Batch splits')
-    tf.flags.DEFINE_string('cropped-path', 'output/cropped/test', 'Cropped path')
+    tf.flags.DEFINE_string('model_dir', 'output/model/img_ctx-nosen/v1', 'Model directory')
+    tf.flags.DEFINE_string('batch_path', 'output/batches/test-{}.npz', 'Batch path')
+    tf.flags.DEFINE_integer('batch_splits', 10, 'Batch splits')
+    tf.flags.DEFINE_string('cropped_path', 'output/cropped/test', 'Cropped path')
     tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')
     tf.flags.DEFINE_bool('debug', False, 'Debug mode')

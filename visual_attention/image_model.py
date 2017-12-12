@@ -15,7 +15,7 @@ def attention_fn(img, temperature, mode, params):
     h = img
     if params.dropout_img_input > 0:
         h = tf.layers.dropout(inputs=h, rate=params.dropout_img_input, training=training)
-    for i in range(3):
+    for i in range(params.depth):
         h = tf.layers.conv2d(inputs=h, filters=params.units, kernel_size=[3, 3],
                              padding="same", name='attn_conv{}'.format(i), **cnn_args)
         h = activation(h)
@@ -91,7 +91,7 @@ def slot_vocab_fn(img_ctx, params):
         name='img_vocab_embed',
         kernel_initializer=initializer)
     h = leaky_relu(img_embedded + tf.expand_dims(slot_vocab_embedding, 0))
-    for i in range(3):
+    for i in range(params.depth):
         h = tf.layers.dense(inputs=h, units=params.units, name='slot_vocab_{}'.format(i))
         h = leaky_relu(h)
     vocab = tf.layers.dense(inputs=h, units=params.vocab_size + 1, name='slot_vocab_logits')

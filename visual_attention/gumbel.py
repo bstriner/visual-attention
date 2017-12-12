@@ -1,6 +1,26 @@
 import tensorflow as tf
 
 
+def modal_sample_softmax(logit, temperature, mode, axis=-1):
+    if mode == tf.estimator.ModeKeys.PREDICT:
+        if tf.flags.FLAGS.deterministic:
+            return take_one_hot(logit, axis=axis)
+        else:
+            return sample_one_hot(logits=logit, axis=axis)
+    else:
+        return gumbel_softmax(logits=logit, axis=axis, temperature=temperature)
+
+
+def modal_sample_sigmoid(logit, temperature, mode):
+    if mode == tf.estimator.ModeKeys.PREDICT:
+        if tf.flags.FLAGS.deterministic:
+            return tf.cast(tf.greater(logit, 0), tf.float32)
+        else:
+            return sample_sigmoid(logits=logit)
+    else:
+        return gumbel_sigmoid(logits=logit, temperature=temperature)
+
+
 def get_temperature(params):
     temperature_raw = tf.train.exponential_decay(params.tau_0,
                                                  decay_rate=params.tau_decay_rate,
@@ -11,6 +31,12 @@ def get_temperature(params):
     temperature = tf.maximum(temperature_raw, params.tau_min, name='temperature')
     tf.summary.scalar('temperature', temperature)
     return temperature
+
+
+def take_one_hot(x, axis=-1, depth=None):
+    depth = best_shape(x, axis=axis, depth=depth)
+    ret = tf.one_hot(tf.argmax(x, axis=axis), depth=depth, axis=axis)
+    return ret
 
 
 def softmax_nd(x, axis=-1):
@@ -47,11 +73,16 @@ def sample_argmax(logits, axis=-1):
     return tf.argmax(logits + g, axis=axis)
 
 
+def best_shape(x, axis, depth=None):
+    if depth is None:
+        depth = x.get_shape()[axis].value
+    if depth is None:
+        depth = tf.shape(x)[axis]
+    return depth
+
+
 def sample_one_hot(logits, axis=-1, depth=None):
-    if depth is None:
-        depth = logits.get_shape()[axis]
-    if depth is None:
-        depth = tf.shape(logits)[axis]
+    depth = best_shape(x, axis=axis, depth=depth)
     g = sample_gumbel(shape=tf.shape(logits))
     h = logits + g
     return tf.one_hot(tf.argmax(h, axis=axis), depth=depth, axis=axis)

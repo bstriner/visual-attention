@@ -2,8 +2,7 @@ import tensorflow as tf
 from tensorflow.python.ops.rnn_cell import RNNCell
 
 from .gumbel import gumbel_softmax, gumbel_sigmoid, sample_one_hot, sample_argmax, sample_sigmoid
-
-EPSILON = 1e-7
+from .util import leaky_relu
 
 
 class BaseStepCell(RNNCell):
@@ -13,14 +12,16 @@ class BaseStepCell(RNNCell):
             temperature,
             slot_vocab,
             img_ctx,
+            enc,
             params,
             mode,
-            activation=tf.nn.relu,
+            activation=leaky_relu,
             reuse=None,
             name=None):
         super(BaseStepCell, self).__init__(_reuse=reuse, name=name)
         self.activation = activation
         self.sen = sen
+        self.enc = enc
         self._num_units = params.units
         self.vocab_size = params.vocab_size
         self.frame_size = params.frame_size
@@ -28,7 +29,8 @@ class BaseStepCell(RNNCell):
         self.dropout_hidden = params.cap_dropout_hidden
         self.temperature = temperature
         self.slot_vocab = slot_vocab
-        self.img_ctx=img_ctx
+        self.img_ctx = img_ctx
+        self.params = params
         self.mode = mode
         self.training = mode == tf.estimator.ModeKeys.TRAIN
         scale = 0.05
@@ -39,12 +41,12 @@ class BaseStepCell(RNNCell):
         return self._num_units
 
     def build_hidden_state(self, n):
-        h0 =  tf.get_variable(
+        h0 = tf.get_variable(
             name='caption_h0',
             shape=[1, self._num_units],
             trainable=True,
             initializer=self.initializer)
-        h0_tiled = tf.tile(h0,[n,1])
+        h0_tiled = tf.tile(h0, [n, 1])
         return h0_tiled
 
     @property
@@ -56,7 +58,7 @@ class BaseStepCell(RNNCell):
         h = inp
         if self.dropout_input > 0:
             h = tf.layers.dropout(inputs=h, rate=self.dropout_input, training=self.training)
-        for j in range(3):
+        for j in range(self.params.depth):
             h = tf.layers.dense(
                 inputs=h,
                 units=self._num_units,
@@ -71,8 +73,8 @@ class BaseStepCell(RNNCell):
             inputs=generate_hidden,
             units=self.frame_size,
             name='input_attn_final')
-        #attn_bias = tf.log(1e-7 + self.sen)
-        #attn_logits += attn_bias
+        # attn_bias = tf.log(1e-7 + self.sen)
+        # attn_logits += attn_bias
         with tf.name_scope('recurrent_slot_attention'):
             if self.mode == tf.estimator.ModeKeys.PREDICT:
                 if tf.flags.FLAGS.deterministic:
@@ -141,18 +143,18 @@ class BaseStepCell(RNNCell):
             h = inp + img_ctx_attn + slot_ctx
             if self.dropout_input > 0:
                 h = tf.layers.dropout(inputs=h, rate=self.dropout_input, training=self.training)
-            for i in range(3):
+            for i in range(self.params.depth):
                 h = tf.layers.dense(
-                inputs=h,
-                units=self._num_units,
-                name='img_ctx_attnop_{}'.format(i),
-                kernel_initializer=self.initializer)
+                    inputs=h,
+                    units=self._num_units,
+                    name='img_ctx_attnop_{}'.format(i),
+                    kernel_initializer=self.initializer)
                 h = self.activation(h)
                 if self.dropout_hidden > 0:
                     h = tf.layers.dropout(inputs=h, rate=self.dropout_hidden, training=self.training)
             next_token_logits = tf.layers.dense(
                 inputs=h,
-                units=self.vocab_size+1,
+                units=self.vocab_size + 1,
                 name='img_ctx_attn_token',
                 kernel_initializer=self.initializer)
         # Combine with end token
@@ -185,7 +187,7 @@ class BaseStepCell(RNNCell):
         h = inp + y_embedded + slot_ctx
         if self.dropout_input > 0:
             h = tf.layers.dropout(inputs=h, rate=self.dropout_input, training=self.training)
-        for j in range(3):
+        for j in range(self.params.depth):
             h = tf.layers.dense(
                 inputs=h,
                 units=self._num_units,
@@ -200,6 +202,17 @@ class BaseStepCell(RNNCell):
             kernel_initializer=self.initializer,
             name='forwardfinal')
         return hd
+
+    def calc_enc_embeddding(self):
+        if self.enc is None:
+            return 0
+        else:
+            emb = tf.layers.dense(
+                inputs=self.enc,
+                units=self._num_units,
+                kernel_initializer=self.initializer,
+                name='enc_embedding')
+            return emb
 
     def calc_sen_ctx(self):
         if self.sen is None:
@@ -219,22 +232,24 @@ class BaseStepCell(RNNCell):
 
 
 class TrainStepCell(BaseStepCell):
-    def __init__(self, sen, temperature, slot_vocab, img_ctx, params, mode, reuse=None, name=None):
+    def __init__(self, sen, temperature, slot_vocab, img_ctx, params, mode, enc, reuse=None, name=None):
         super(TrainStepCell, self).__init__(
             sen=sen,
             temperature=temperature,
             mode=mode,
             name=name,
+            enc=enc,
             slot_vocab=slot_vocab,
             img_ctx=img_ctx,
             params=params,
             reuse=reuse)
 
     def call(self, inputs, state):
+        enc_emb = self.calc_enc_embeddding()
         y0 = tf.squeeze(inputs, axis=1)  # (n,) [end, unknown]+vocab
         h0 = state
         sen_ctx = self.calc_sen_ctx()
-        inp = sen_ctx + h0
+        inp = sen_ctx + h0 + enc_emb
         output_logits, slot_attn, slot_sentinel = self.calc_step_output(inp=inp)
         h1 = self.calc_step_hidden(
             inp=inp,
@@ -249,7 +264,7 @@ class TrainStepCell(BaseStepCell):
 
 
 class PredictStepCell(BaseStepCell):
-    def __init__(self, sen, slot_vocab, img_ctx, params, mode, reuse=None, name=None):
+    def __init__(self, sen, slot_vocab, img_ctx, params, mode, enc, reuse=None, name=None):
         super(PredictStepCell, self).__init__(
             sen=sen,
             temperature=None,
@@ -257,13 +272,15 @@ class PredictStepCell(BaseStepCell):
             slot_vocab=slot_vocab,
             img_ctx=img_ctx,
             params=params,
+            enc=enc,
             reuse=reuse,
             mode=mode)
 
     def call(self, inputs, state):
+        enc_emb = self.calc_enc_embeddding()
         h0 = state
         sen_ctx = self.calc_sen_ctx()
-        inp = sen_ctx + h0
+        inp = sen_ctx + h0 + enc_emb
         output_logits, slot_attn, slot_sentinel = self.calc_step_output(inp=inp)
         # y0 = sample_argmax(output_logits, axis=-1)  # [end, unk] + vocab
         # y0 = tf.argmax(output_logits, axis=-1)
@@ -291,7 +308,7 @@ def shift_captions(cap):
     return shifted
 
 
-def train_decoder_fn(slot_vocab, sen, cap, img_ctx, temperature, params, mode):
+def train_decoder_fn(slot_vocab, sen, cap, img_ctx, temperature, params, mode, enc):
     """
 
     :param slot_vocab:
@@ -312,8 +329,9 @@ def train_decoder_fn(slot_vocab, sen, cap, img_ctx, temperature, params, mode):
         slot_vocab=slot_vocab,
         params=params,
         mode=mode,
+        enc=enc,
         name='step_cell')
-    #initial_state = cell.zero_state(batch_size=n, dtype=tf.float32)
+    # initial_state = cell.zero_state(batch_size=n, dtype=tf.float32)
     initial_state = cell.build_hidden_state(n=n)
     (hlogits, slot_attn, slot_sentinel), h1 = tf.nn.dynamic_rnn(
         cell=cell,
@@ -333,7 +351,7 @@ def predict_decoder_fn(slot_vocab, img_ctx, sen, params, mode, depth):
         img_ctx=img_ctx,
         mode=mode,
         name='step_cell')
-    #initial_state = cell.zero_state(batch_size=n, dtype=tf.float32)
+    # initial_state = cell.zero_state(batch_size=n, dtype=tf.float32)
     initial_state = cell.build_hidden_state(n=n)
     inputs = tf.zeros((1, depth, 1))
     (logits, slot_attn, slot_sentinel, y1), state = tf.nn.dynamic_rnn(

@@ -20,7 +20,7 @@ def cross_entropy_loss(labels, logits, mask=None, smoothing=0.):
     return loss
 
 
-def nll_loss(labels, logits, mask=None):
+def nll_loss(labels, logits, mask=None, mean=True):
     depth = tf.shape(logits)[-1]
     p = softmax_nd(logits, axis=2)  # (n, depth, vocab+2) [end, unknown] + vocab
     shape = tf.shape(p)
@@ -31,9 +31,15 @@ def nll_loss(labels, logits, mask=None):
     #onehot = tf.one_hot(labels, depth, axis=2)  # (n, depth, vocab)
     #loss_partial = -(onehot * tf.log(EPSILON + p))  # (n, depth, vocab)
     #loss_partial = tf.reduce_sum(loss_partial, axis=2)  # (n, depth)
-    if mask is not None:
-        normalizer = tf.reduce_sum(mask, axis=1)  # + EPSILON
-        loss = tf.reduce_sum(mask * loss_partial, axis=1) / normalizer
+    if mean:
+        if mask is not None:
+            normalizer = tf.reduce_sum(mask, axis=1)  # + EPSILON
+            loss = tf.reduce_sum(mask * loss_partial, axis=1) / normalizer
+        else:
+            loss = tf.reduce_mean(loss_partial, axis=1)
     else:
-        loss = tf.reduce_mean(loss_partial, axis=(1, 2))
+        if mask is not None:
+            loss = tf.reduce_sum(mask * loss_partial, axis=1)
+        else:
+            loss = tf.reduce_sum(loss_partial, axis=1)
     return loss

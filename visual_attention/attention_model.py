@@ -2,9 +2,11 @@ import tensorflow as tf
 from tensorflow.contrib.layers import l2_regularizer, apply_regularization
 
 from .caption_model import train_decoder_fn, predict_decoder_fn
+from .encoder_model import encoder_fn
 from .gumbel import get_temperature
 from .image_model import slot_vocab_fn, attention_fn, apply_attn
 from .losses import nll_loss, cross_entropy_loss
+from .util import EPSILON, get_kl_weight
 
 
 def model_fn(features, labels, mode, params):
@@ -57,6 +59,18 @@ def model_fn(features, labels, mode, params):
         else:
             decoder_sen = None
         decoder_img_ctx = tf.gather(img_ctx, ass, axis=0)
+        if params.vae_dim > 0:
+            mu, raw_sig = encoder_fn(img_ctx=decoder_img_ctx,
+                                     sen=decoder_sen, slot_vocab=decoder_vocab,
+                                     mask=cap_mask,
+                                     cap=cap, temperature=temperature, params=params, mode=mode)
+            sigma = EPSILON + tf.exp(raw_sig)
+            enc = mu + (sigma * tf.random_normal(tf.shape(mu), 0, 1, dtype=tf.float32))
+            kl_loss = 0.5 * tf.reduce_sum(tf.square(mu) + tf.square(sigma) - tf.log(EPSILON + tf.square(sigma)) - 1, 1)
+            kl_loss = tf.reduce_mean(kl_loss, 0)
+            tf.summary.scalar('kl_loss', kl_loss)
+        else:
+            enc = None
 
         logits, slot_attn, slot_sentinel = train_decoder_fn(
             slot_vocab=decoder_vocab,
@@ -65,7 +79,8 @@ def model_fn(features, labels, mode, params):
             cap=cap,
             temperature=temperature,
             params=params,
-            mode=mode)
+            mode=mode,
+            enc=enc)
 
         # Loss
         if params.loss == 'cross_entropy':
@@ -78,9 +93,14 @@ def model_fn(features, labels, mode, params):
             loss = tf.reduce_mean(nll_loss(
                 labels=cap,
                 mask=cap_mask,
-                logits=logits))
+                logits=logits,
+                mean=False))
         else:
             raise ValueError()
+
+        if params.vae_dim > 0:
+            kl_weight = get_kl_weight(params)
+            loss += kl_weight * kl_loss
 
         # Regularization
         # slot_attn: (n, depth, frame_size)

@@ -7,7 +7,7 @@ import tensorflow as tf
 from tensorflow.contrib.training import HParams
 
 
-def get_hparams(model_dir):
+def get_hparams(model_dir, create):
     hparams = default_params()
     hparams_path = os.path.join(model_dir, 'configuration-hparams.json')
     if os.path.exists(hparams_path):
@@ -16,7 +16,12 @@ def get_hparams(model_dir):
             for k, v in six.iteritems(hparam_dict):
                 setattr(hparams, k, v)
     else:
-        hparams.parse(tf.flags.FLAGS.hparams)
+        if create:
+            hparams.parse(tf.flags.FLAGS.hparams)
+            with open(hparams_path, 'w') as f:
+                json.dump(hparams.values(), f)
+        else:
+            raise ValueError("No hparams file found: {}".format(hparams_path))
     return hparams
 
 

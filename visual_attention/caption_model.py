@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.python.ops.rnn_cell import RNNCell
 
-from .gumbel import gumbel_softmax, gumbel_sigmoid, sample_one_hot, sample_argmax, sample_sigmoid
+from .gumbel import modal_sample_softmax, modal_sample_sigmoid, sample_argmax
 from .util import leaky_relu
 
 
@@ -76,14 +76,12 @@ class BaseStepCell(RNNCell):
         # attn_bias = tf.log(1e-7 + self.sen)
         # attn_logits += attn_bias
         with tf.name_scope('recurrent_slot_attention'):
-            if self.mode == tf.estimator.ModeKeys.PREDICT:
-                if tf.flags.FLAGS.deterministic:
-                    slot_attn = tf.one_hot(tf.argmax(attn_logits, axis=-1),
-                                           depth=self.frame_size, axis=-1)
-                else:
-                    slot_attn = sample_one_hot(logits=attn_logits, axis=-1)
-            else:
-                slot_attn = gumbel_softmax(logits=attn_logits, temperature=self.temperature, axis=-1)
+            slot_attn = modal_sample_softmax(
+                logit=attn_logits,
+                temperature=self.temperature,
+                axis=-1,
+                mode=self.mode,
+                attn_mode=self.params.attn_mode_cap)
 
         # Gate between slots and generation
         sent_logits = tf.layers.dense(
@@ -92,13 +90,11 @@ class BaseStepCell(RNNCell):
             name='input_sent',
             kernel_initializer=self.initializer)
         with tf.name_scope('recurrent_slot_sentinel'):
-            if self.mode == tf.estimator.ModeKeys.PREDICT:
-                if tf.flags.FLAGS.deterministic:
-                    slot_sentinel = tf.cast(tf.greater(sent_logits, 0), tf.float32)
-                else:
-                    slot_sentinel = sample_sigmoid(logits=sent_logits)
-            else:
-                slot_sentinel = gumbel_sigmoid(logits=sent_logits, temperature=self.temperature)
+            slot_sentinel = modal_sample_sigmoid(
+                logit=sent_logits,
+                temperature=self.temperature,
+                mode=self.mode,
+                attn_mode=self.params.attn_mode_cap)
         # end token
         end_token_logits = tf.layers.dense(
             inputs=generate_hidden,
@@ -163,13 +159,16 @@ class BaseStepCell(RNNCell):
         return output_logits, slot_attn, slot_sentinel
 
     def calc_step_hidden(self, inp, y0, slot_attn, slot_sentinel):
-        # embed y0
-        y_embed = tf.get_variable(
-            name='y_embed',
-            shape=[self.vocab_size + 2, self._num_units],  # [end, unknown] + vocab
-            trainable=True,
-            initializer=self.initializer)
-        y_embedded = tf.gather(y_embed, y0, axis=0)  # n, unit
+        if self.params.y0_feedback:
+            # embed y0
+            y_embed = tf.get_variable(
+                name='y_embed',
+                shape=[self.vocab_size + 2, self._num_units],  # [end, unknown] + vocab
+                trainable=True,
+                initializer=self.initializer)
+            y_embedded = tf.gather(y_embed, y0, axis=0)  # n, unit
+        else:
+            y_embedded = 0
         # embed attention
         slot_combined_attn = slot_sentinel * slot_attn  # (n, frame_size)
         slot_ctx0 = tf.layers.dense(
@@ -264,15 +263,15 @@ class TrainStepCell(BaseStepCell):
 
 
 class PredictStepCell(BaseStepCell):
-    def __init__(self, sen, slot_vocab, img_ctx, params, mode, enc, reuse=None, name=None):
+    def __init__(self, sen, slot_vocab, img_ctx, params, mode, enc, temperature, reuse=None, name=None):
         super(PredictStepCell, self).__init__(
             sen=sen,
-            temperature=None,
             name=name,
             slot_vocab=slot_vocab,
             img_ctx=img_ctx,
             params=params,
             enc=enc,
+            temperature=temperature,
             reuse=reuse,
             mode=mode)
 
@@ -341,14 +340,16 @@ def train_decoder_fn(slot_vocab, sen, cap, img_ctx, temperature, params, mode, e
     return hlogits, slot_attn, slot_sentinel  # (n, depth, vocab)
 
 
-def predict_decoder_fn(slot_vocab, img_ctx, sen, params, mode, depth):
+def predict_decoder_fn(slot_vocab, img_ctx, sen, enc, params, mode, depth, temperature):
     shape = tf.shape(img_ctx)
     n = shape[0]
     cell = PredictStepCell(
         sen=sen,
+        enc=enc,
         slot_vocab=slot_vocab,
         params=params,
         img_ctx=img_ctx,
+        temperature=temperature,
         mode=mode,
         name='step_cell')
     # initial_state = cell.zero_state(batch_size=n, dtype=tf.float32)

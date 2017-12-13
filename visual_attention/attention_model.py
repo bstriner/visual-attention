@@ -25,12 +25,19 @@ def model_fn(features, labels, mode, params):
         slot_vocab = None
 
     if mode == tf.estimator.ModeKeys.PREDICT:
+        n = tf.shape(img_ctx)[0]
+        if params.vae_dim > 0:
+            enc = tf.random_normal(shape=(n, params.vae_dim), mean=0, stddev=1, dtype=tf.float32)
+        else:
+            enc = None
         logits, slot_attn, slot_sentinel, y1 = predict_decoder_fn(
             slot_vocab=slot_vocab,
             img_ctx=img_ctx,
             sen=img_sen,
+            enc=enc,
             params=params,
             depth=30,
+            temperature=temperature,
             mode=mode)
         predictions = {
             'captions': y1,

@@ -17,7 +17,9 @@ def main(argv):
 
 if __name__ == '__main__':
     tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model_dir', 'output/model/img_ctx-nosen/v1', 'Model directory')
+    #tf.flags.DEFINE_string('model_dir', 'output/model/vae/novae-512-soft', 'Model directory')
+    #tf.flags.DEFINE_string('model_dir', 'output/model/vaecomparison/novaetest512v2', 'Model directory')
+    tf.flags.DEFINE_string('model_dir', 'output/model/model512v4', 'Model directory')
     tf.flags.DEFINE_string('batch_path', 'output/batches/val.npz', 'Batch path')
     tf.flags.DEFINE_integer('batch_splits', 1, 'Batch splits')
     tf.flags.DEFINE_string('cropped_path', 'output/cropped/val', 'Cropped path')
@@ -25,4 +27,5 @@ if __name__ == '__main__':
     tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')
     tf.flags.DEFINE_bool('debug', False, 'Debug mode')
     tf.flags.DEFINE_bool('deterministic', True, 'Deterministic')
+    tf.flags.DEFINE_integer('batch_size', 32, 'Batch size')
     tf.app.run()

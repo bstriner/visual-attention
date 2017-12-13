@@ -68,13 +68,22 @@ class EncoderStepCell(RNNCell):
             units=self.frame_size,
             kernel_initializer=self.initializer,
             name='encoder_attention_out')
-        att = modal_sample_softmax(att_logit, axis=-1, mode=self.mode, temperature=self.temperature)
+        att = modal_sample_softmax(
+            logit=att_logit,
+            axis=-1,
+            mode=self.mode,
+            attn_mode=self.params.attn_mode_enc,
+            temperature=self.temperature)
         sen_logit = tf.layers.dense(
             inputs=h,
             units=1,
             kernel_initializer=self.initializer,
             name='encoder_attention_sen_out')
-        sen = modal_sample_sigmoid(sen_logit, temperature=self.temperature, mode=self.mode)
+        sen = modal_sample_sigmoid(
+            logit=sen_logit,
+            temperature=self.temperature,
+            attn_mode=self.params.attn_mode_enc,
+            mode=self.mode)
         combined_att = att * sen
         return combined_att
 

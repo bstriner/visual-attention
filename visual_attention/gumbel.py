@@ -1,24 +1,39 @@
 import tensorflow as tf
 
 
-def modal_sample_softmax(logit, temperature, mode, axis=-1):
-    if mode == tf.estimator.ModeKeys.PREDICT:
-        if tf.flags.FLAGS.deterministic:
-            return take_one_hot(logit, axis=axis)
+def modal_sample_softmax(logit, temperature, mode, attn_mode='gumbel', axis=-1):
+    if attn_mode == 'soft':
+        return softmax_nd(logit, axis=axis)
+    elif attn_mode == 'gumbel':
+        if mode == tf.estimator.ModeKeys.PREDICT:
+            if tf.flags.FLAGS.deterministic:
+                #return take_one_hot(logit, axis=axis)
+                print("TEMP:{}".format(temperature))
+                return softmax_nd(logit/temperature, axis=axis)
+            else:
+                #return sample_one_hot(logits=logit, axis=axis)
+                return gumbel_softmax(logits=logit, axis=axis, temperature=temperature)
         else:
-            return sample_one_hot(logits=logit, axis=axis)
+            return gumbel_softmax(logits=logit, axis=axis, temperature=temperature)
     else:
-        return gumbel_softmax(logits=logit, axis=axis, temperature=temperature)
+        raise ValueError()
 
 
-def modal_sample_sigmoid(logit, temperature, mode):
-    if mode == tf.estimator.ModeKeys.PREDICT:
-        if tf.flags.FLAGS.deterministic:
-            return tf.cast(tf.greater(logit, 0), tf.float32)
+def modal_sample_sigmoid(logit, temperature, mode, attn_mode='gumbel'):
+    if attn_mode == 'soft':
+        return tf.nn.sigmoid(logit)
+    elif attn_mode == 'gumbel':
+        if mode == tf.estimator.ModeKeys.PREDICT:
+            if tf.flags.FLAGS.deterministic:
+                #return tf.cast(tf.greater(logit, 0), tf.float32)
+                return tf.nn.sigmoid(logit/temperature)
+            else:
+                #return sample_sigmoid(logits=logit)
+                return gumbel_sigmoid(logits=logit, temperature=temperature)
         else:
-            return sample_sigmoid(logits=logit)
+            return gumbel_sigmoid(logits=logit, temperature=temperature)
     else:
-        return gumbel_sigmoid(logits=logit, temperature=temperature)
+        raise ValueError()
 
 
 def get_temperature(params):
@@ -82,7 +97,7 @@ def best_shape(x, axis, depth=None):
 
 
 def sample_one_hot(logits, axis=-1, depth=None):
-    depth = best_shape(x, axis=axis, depth=depth)
+    depth = best_shape(logits, axis=axis, depth=depth)
     g = sample_gumbel(shape=tf.shape(logits))
     h = logits + g
     return tf.one_hot(tf.argmax(h, axis=axis), depth=depth, axis=axis)

@@ -1,17 +1,17 @@
-
 import json
 import os
 
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.learn import RunConfig
-from tensorflow.contrib.training import HParams
 from tensorflow.python.estimator.estimator import Estimator
+from tqdm import tqdm
 
 from visual_attention.attention_model import model_fn
 from visual_attention.feed_data import predict_input_fn, FeedFnHook
 from visual_attention.util import token_id_to_vocab
-from tqdm import tqdm
+from .default_params import get_hparams
+
 
 def calc_caption(prediction, vocab):
     # Calculate generated caption
@@ -32,9 +32,7 @@ def generate_results(model_dir, results_path):
     os.makedirs(os.path.dirname(results_path), exist_ok=True)
     vocab = np.load('output/processed-annotations/vocab.npy')
     run_config = RunConfig(model_dir=model_dir)
-    with open(os.path.join(model_dir, 'configuration-hparams.json')) as f:
-        hparam_dict = json.load(f)
-    hparams = HParams(**hparam_dict)
+    hparams = get_hparams(model_dir=model_dir, create=False)
     print(hparams)
     estimator = Estimator(
         model_fn=model_fn,
@@ -42,7 +40,8 @@ def generate_results(model_dir, results_path):
         params=hparams)
     val_path = tf.flags.FLAGS.batch_path
     splits = tf.flags.FLAGS.batch_splits
-    hook = FeedFnHook(path_fmt=val_path, splits=splits, batch_size=hparams.batch_size, predict=True, single_pass=True)
+    batch_size = tf.flags.FLAGS.batch_size
+    hook = FeedFnHook(path_fmt=val_path, splits=splits, batch_size=batch_size, predict=True, single_pass=True)
 
     results = []
     it = tqdm(desc='Generating results')

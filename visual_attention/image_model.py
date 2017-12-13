@@ -1,6 +1,6 @@
 import tensorflow as tf
 
-from .gumbel import gumbel_softmax, gumbel_sigmoid, softmax_nd, sample_one_hot, sample_sigmoid
+from .gumbel import modal_sample_sigmoid, modal_sample_softmax
 from .util import leaky_relu
 
 
@@ -28,38 +28,25 @@ def attention_fn(img, temperature, mode, params):
                              padding="same", name='attn_sen', **cnn_args)
 
     # attention
-    if params.attn_mode_img == 'gumbel':
-        # h = tf.transpose(h_att, (0, 3, 1, 2))  # (n,c, h,w)
-        # h = tf.reshape(h, (-1, 14 * 14))  # (n*c, h*w)
-        # h = gumbel_softmax(logits=h, temperature=temperature, axis=-1)
-        # h = tf.reshape(h, (-1, frame_size, 14, 14))  # (n,c, h, w)
-        # attn = tf.transpose(h, (0, 2, 3, 1))  # (n, h, w, c)
-        h = tf.transpose(h_att, (0, 3, 1, 2))  # (n,c,h,w)
-        h = tf.reshape(h, (n * frame_size, 14 * 14))  # (n*c, h*w)
-        if mode == tf.estimator.ModeKeys.PREDICT:
-            if tf.flags.FLAGS.deterministic:
-                h = tf.one_hot(tf.argmax(h, axis=1), depth=h.shape[1].value, axis=1)
-            else:
-                h = sample_one_hot(logits=h, axis=1)
-        else:
-            h = gumbel_softmax(logits=h, temperature=temperature, axis=1)
-        h = tf.reshape(h, (n, frame_size, 14, 14))
-        attn = tf.transpose(h, (0, 2, 3, 1))
-    elif params.attn_mode_img == 'soft':
-        attn = softmax_nd(h_att, axis=(1, 2))
-    else:
-        raise ValueError()
+    h = tf.transpose(h_att, (0, 3, 1, 2))  # (n,c,h,w)
+    h = tf.reshape(h, (n * frame_size, 14 * 14))  # (n*c, h*w)
+    h = modal_sample_softmax(
+        logit=h,
+        temperature=temperature,
+        mode=mode,
+        attn_mode=params.attn_mode_img,
+        axis=1)
+    h = tf.reshape(h, (n, frame_size, 14, 14))
+    attn = tf.transpose(h, (0, 2, 3, 1))
 
     if params.use_img_sen:
         # sentinel
         sen_logits = tf.reduce_mean(h_sen, axis=(1, 2))  # (n, c)
-        if mode == tf.estimator.ModeKeys.PREDICT:
-            if tf.flags.FLAGS.deterministic:
-                sen = tf.cast(tf.greater(sen_logits, 0), tf.float32)
-            else:
-                sen = sample_sigmoid(sen_logits)
-        else:
-            sen = gumbel_sigmoid(sen_logits, temperature=temperature)  # (n, c)
+        sen = modal_sample_sigmoid(
+            logit=sen_logits,
+            temperature=temperature,
+            mode=mode,
+            attn_mode=params.attn_mode_sen)
         tf.summary.histogram('image_sentinel', sen)
         return attn, sen
     else:

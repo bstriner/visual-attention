@@ -1,7 +1,3 @@
-import matplotlib
-
-matplotlib.use('AGG')
-
 import csv
 import json
 import os
@@ -17,7 +13,7 @@ from tensorflow.python.estimator.estimator import Estimator
 from visual_attention.attention_model import model_fn
 from visual_attention.feed_data import predict_input_fn, FeedFnHook
 from visual_attention.util import token_id_to_vocab
-
+from .default_params import get_hparams
 
 def write_prediction(output_path, prediction, vocab, use_slot_vocab):
     # print(type(prediction))
@@ -115,9 +111,7 @@ def generate_captions(model_dir, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     vocab = np.load('output/processed-annotations/vocab.npy')
     run_config = RunConfig(model_dir=model_dir)
-    with open(os.path.join(model_dir, 'configuration-hparams.json')) as f:
-        hparam_dict = json.load(f)
-    hparams = HParams(**hparam_dict)
+    hparams = get_hparams(model_dir, create=False)
     print(hparams)
     estimator = Estimator(
         model_fn=model_fn,
@@ -125,7 +119,7 @@ def generate_captions(model_dir, output_dir):
         params=hparams)
     val_path = tf.flags.FLAGS.batch_path
     use_slot_vocab = hparams.use_slot_vocab
-    hook = FeedFnHook(path_fmt=val_path, splits=1, batch_size=hparams.batch_size, predict=True)
+    hook = FeedFnHook(path_fmt=val_path, splits=1, batch_size=tf.flags.FLAGS.batch_size, predict=True)
     with open(os.path.join(output_dir, 'captions.csv'), 'w', newline='') as f:
         w = csv.writer(f)
         w.writerow(['Index', 'Caption'])
@@ -135,21 +129,3 @@ def generate_captions(model_dir, output_dir):
             w.writerow([i, caption])
             if i > 100:
                 break
-
-
-def main(argv):
-    model_dir = tf.flags.FLAGS.model_dir
-    output_dir = os.path.join(model_dir, 'generated')
-    generate_captions(model_dir=model_dir, output_dir=output_dir)
-
-
-if __name__ == '__main__':
-    tf.logging.set_verbosity(tf.logging.INFO)
-    tf.flags.DEFINE_string('model-dir', 'output/model/img_ctx-nosen/v1', 'Model directory')
-    tf.flags.DEFINE_string('batch-path', 'output/batches/val.npz', 'Batch path')
-    tf.flags.DEFINE_string('cropped-path', 'output/cropped/val', 'Cropped path')
-    tf.flags.DEFINE_string('schedule', 'train_and_evaluate', 'Schedule')
-    tf.flags.DEFINE_string('hparams', '', 'Hyperparameters')
-    tf.flags.DEFINE_bool('debug', False, 'Debug mode')
-    tf.flags.DEFINE_bool('deterministic', False, 'Deterministic')
-    tf.app.run()
